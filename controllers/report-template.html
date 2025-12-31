@@ -1,0 +1,578 @@
+<!-- report-template.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Coaching Report — PDF</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        /* Palette derived from the logo: purple, teal, yellow, dark-navy */
+        --primary: #6f64d6; /* purple */
+        --accent: #0f1724; /* dark navy (text) */
+        --teal: #00b7c7; /* teal */
+        --sun: #ffd23f; /* yellow */
+        --bg: #f6f8fb;
+        --card: #ffffff;
+        --muted: #6b7280;
+        --max-width: 900px;
+        --pad: 18px;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+        color: var(--accent);
+      }
+      .report {
+        max-width: var(--max-width);
+        margin: 22px auto;
+        padding: 18px;
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px;
+        background: linear-gradient(90deg, #ffffff, #fbfdff);
+        border-radius: 10px;
+        border-left: 6px solid var(--primary);
+      }
+      .logo {
+        width: 88px;
+        height: 64px;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .logo img {
+        max-width: 100%;
+        max-height: 64px;
+        display: block;
+      }
+      .title {
+        flex: 1;
+      }
+      .title h1 {
+        margin: 0;
+        font-size: 20px;
+        color: var(--primary);
+        letter-spacing: 0.2px;
+      }
+      .title p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .section {
+        margin-top: 16px;
+        background: var(--card);
+        padding: 14px;
+        border-radius: 10px;
+        box-shadow: 0 6px 18px rgba(12, 18, 35, 0.03);
+      }
+      .section h2 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        color: var(--accent);
+      }
+      .top-grid {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 14px;
+      }
+      .transcript {
+        white-space: pre-wrap;
+        color: #111827;
+        font-size: 14px;
+        padding: 8px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #fff, #fbfdff);
+        border: 1px solid #eef4fb;
+      }
+      .donut-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-start;
+      }
+      .donut-card {
+        width: 150px;
+        height: 150px;
+        padding: 10px;
+        border-radius: 8px;
+        background: linear-gradient(180deg, #fff, #fbfdff);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #eef4fb;
+      }
+      .donut-card canvas {
+        width: 84px !important;
+        height: 84px !important;
+      }
+      .donut-label {
+        margin-top: 8px;
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+      }
+      table.vocab,
+      table.grammar {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      table.vocab th,
+      table.vocab td,
+      table.grammar th,
+      table.grammar td {
+        padding: 8px;
+        border-bottom: 1px solid #eef2f7;
+        text-align: left;
+        vertical-align: top;
+      }
+      table.vocab th,
+      table.grammar th {
+        background: #fbfdff;
+        font-weight: 700;
+        color: var(--primary);
+      }
+      .coach-list {
+        display: grid;
+        gap: 10px;
+      }
+      .coach-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .coach-name {
+        width: 180px;
+        font-weight: 700;
+        color: var(--accent);
+        font-size: 13px;
+      }
+      .coach-bar {
+        flex: 1;
+        height: 14px;
+        border-radius: 10px;
+        background: #eef6f8;
+        overflow: hidden;
+        position: relative;
+        border: 1px solid #e6f0f2;
+      }
+      .coach-fill {
+        height: 100%;
+        border-radius: 10px;
+      }
+      .score-pill {
+        width: 48px;
+        text-align: center;
+        font-weight: 700;
+      }
+      .pron {
+        /* color: var(--muted); */
+        font-size: 13px;
+        padding: 8px;
+        border-radius: 8px;
+        background: #fbfdff;
+        border: 1px solid #eef4fb;
+      }
+      .ex-list pre {
+        white-space: pre-wrap;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 18px;
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media print {
+        body {
+          background: white;
+        }
+        .report {
+          margin: 0;
+          padding: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="report" id="reportRoot">
+      <div class="header">
+        <!-- <div class="logo" id="logoWrap">
+          <img id="logoImg" alt="Company Logo" src="" />
+        </div> -->
+        <div class="title">
+          <h1 id="userName">Speaker Name</h1>
+          <p class="meta" id="meetingMeta">Meeting • Transcript</p>
+          <div
+            style="margin-top: 6px; font-size: 12px; color: var(--muted)"
+            id="emailLine"
+          ></div>
+        </div>
+        <div style="text-align: right">
+          <div
+            style="font-weight: 800; color: var(--primary); font-size: 18px"
+            id="overallScore"
+          >
+            Overall
+          </div>
+          <div style="font-size: 12px; color: var(--muted)">
+            AI Observations Summary
+          </div>
+        </div>
+      </div>
+
+      <!-- <div class="section top-grid">
+      <div>
+        <h2>Transcript</h2>
+        <div class="transcript" id="transcriptText"></div>
+      </div>
+    </div> -->
+      <div class="section">
+        <div>
+          <h2>Score Overview</h2>
+          <div class="donut-grid" id="donutGrid"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div>
+          <h2>Grammar Corrections</h2>
+          <table class="grammar" id="grammarTable">
+            <thead>
+              <tr>
+                <th>Mistake</th>
+                <th>Correction</th>
+                <th>Explanation</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Vocabulary Booster</h2>
+        <table class="vocab" id="vocabTable">
+          <thead>
+            <tr>
+              <th>Word</th>
+              <th>Count</th>
+              <th>Suggestions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="section">
+        <div>
+          <h2>Pronunciation Challenges</h2>
+          <span class="pron" id="pronunciationArea">
+            (no pronunciation notes)
+          </span>
+        </div>
+      </div>
+      <div class="section">
+        <div>
+          <h2>Coaching Space</h2>
+          <div class="coach-list" id="coachingList"></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Practice Exercises & Answers</h2>
+        <div class="ex-list" id="exerciseArea"></div>
+      </div>
+
+      <footer>Generated by Coaching Report • Confidential</footer>
+    </div>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+      /* Utility helpers */
+      function escapeHtml(s) {
+        if (!s && s !== 0) return "";
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      function getColorForValue(v) {
+        if (v >= 70) return "#16a34a"; // green
+        if (v >= 40) return "#f59e0b"; // yellow
+        return "#ef4444"; // red
+      }
+      function gradientForValue(ctx, colorHex) {
+        // create horizontal gradient from color to slightly darker
+        const g = ctx.createLinearGradient(0, 0, 120, 0);
+        // colorHex to rgb fallback:
+        g.addColorStop(0, colorHex);
+        g.addColorStop(1, colorHex);
+        return g;
+      }
+      /* Render the report using a JS object reportData */
+      function renderReport(reportData) {
+        // // Logo loading: prefer ./logo.png (in same dir as HTML), else try known container path.
+        // const logoImg = document.getElementById("logoImg");
+        // // try local logo first (relative), then fallback to provided absolute path
+        // const localLogo = "./logo.png";
+        // const fallback = "/mnt/data/7023591f-1380-4910-b764-fc93a3eea9ce.png";
+        // // We'll attempt to set both; puppeteer should be able to load local file paths if present
+        // logoImg.src = localLogo;
+        // logoImg.onerror = () => {
+        //   logoImg.src = fallback;
+        // };
+        // logoImg.onload = () => {
+        //   /* ok */
+        // };
+
+        // Header
+        document.getElementById("userName").textContent =
+          reportData.speakerName || reportData.speakerEmail || "Unknown";
+        document.getElementById("meetingMeta").textContent = "Coaching Report";
+        document.getElementById("emailLine").textContent =
+          reportData.speakerEmail || "";
+
+        // // Transcript
+        // document.getElementById("transcriptText").textContent =
+        //   reportData.transcript || "";
+
+        // Overall score: avg of openAiScores or avg of scores values
+        let overall = 0;
+        if (
+          Array.isArray(reportData.openAiScores) &&
+          reportData.openAiScores.length
+        ) {
+          overall = Math.round(
+            reportData.openAiScores.reduce((a, b) => a + b, 0) /
+              reportData.openAiScores.length
+          );
+        } else if (reportData.scores) {
+          const vals = Object.values(reportData.scores);
+          overall = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+        }
+        document.getElementById(
+          "overallScore"
+        ).textContent = `Overall ${overall}`;
+
+        // Donut charts
+        const donutGrid = document.getElementById("donutGrid");
+        donutGrid.innerHTML = "";
+        const scores = reportData.scores || {};
+        const entries = Object.entries(scores);
+        entries.forEach(([key, value], idx) => {
+          const card = document.createElement("div");
+          card.className = "donut-card";
+          const canvasId = `donut_${idx}`;
+          card.innerHTML = `<canvas id="${canvasId}"></canvas><div class="donut-label">${escapeHtml(
+            key.replace(/([A-Z])/g, " $1")
+          )}<br/><strong>${value}%</strong></div>`;
+          donutGrid.appendChild(card);
+          // draw after appended
+          const ctx = document.getElementById(canvasId).getContext("2d");
+          // dataset color based on value mapped to logo palette
+          let color =
+            value >= 70
+              ? "var(--teal)"
+              : value >= 40
+              ? "var(--sun)"
+              : "#ef4444";
+          // fallback convert CSS var:
+          color =
+            getComputedStyle(document.documentElement)
+              .getPropertyValue("--teal")
+              .trim() && value >= 70
+              ? getComputedStyle(document.documentElement)
+                  .getPropertyValue("--teal")
+                  .trim()
+              : value >= 40
+              ? getComputedStyle(document.documentElement)
+                  .getPropertyValue("--sun")
+                  .trim()
+              : "#ef4444";
+
+          new Chart(ctx, {
+            type: "doughnut",
+            data: {
+              datasets: [
+                {
+                  data: [value, Math.max(0, 100 - value)],
+                  backgroundColor: [color, "#eef6fb"],
+                  borderWidth: 0,
+                },
+              ],
+            },
+            options: {
+              cutout: "72%",
+              responsive: false,
+              plugins: {
+                legend: { display: false },
+                tooltip: { enabled: false },
+              },
+            },
+          });
+        });
+
+        // Grammar table
+        const gtbody = document.querySelector("#grammarTable tbody");
+        gtbody.innerHTML = "";
+        (reportData.openAiObservations || []).forEach((obs) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td><code>${escapeHtml(
+            obs.mistake || ""
+          )}</code></td><td><strong>${escapeHtml(
+            obs.correction || ""
+          )}</strong></td><td style="color:var(--muted)">${escapeHtml(
+            obs.explanation || ""
+          )}</td>`;
+          gtbody.appendChild(tr);
+        });
+
+        // Vocabulary table (supports Vocabulary_Booster or Vocabulary_Booster-like keys)
+        const vb =
+          reportData.Vocabulary_Booster ||
+          reportData.vocabularyBooster ||
+          reportData.Vocabulary_Booster ||
+          reportData.Vocabulary_Booster ||
+          reportData.Vocabulary_Booster ||
+          [];
+        const vtbody = document.querySelector("#vocabTable tbody");
+        vtbody.innerHTML = "";
+        (vb || []).forEach((w) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td>${escapeHtml(w.word || "")}</td><td>${escapeHtml(
+            String(w.occurrences || 0)
+          )}</td><td>${escapeHtml((w.suggestions || []).join(", "))}</td>`;
+          vtbody.appendChild(tr);
+        });
+
+        // Pronunciation
+        const pron = document.getElementById("pronunciationArea");
+        pron.innerHTML = "";
+        if (
+          reportData.pronunciationChallenge &&
+          reportData.pronunciationChallenge.trim()
+        ) {
+          pron.textContent = reportData.pronunciationChallenge;
+        } else {
+          pron.textContent = "(no pronunciation notes)";
+        }
+
+        // Coaching Space: show bar per metric (use scores)
+        const coachingList = document.getElementById("coachingList");
+        coachingList.innerHTML = "";
+        entries.forEach(([k, v]) => {
+          const row = document.createElement("div");
+          row.className = "coach-row";
+          const name = document.createElement("div");
+          name.className = "coach-name";
+          name.textContent = k.replace(/([A-Z])/g, " $1");
+          const barWrap = document.createElement("div");
+          barWrap.className = "coach-bar";
+          const fill = document.createElement("div");
+          fill.className = "coach-fill";
+          // color gradient based on value
+          const base = getColorForValue(v);
+          fill.style.width = v + "%";
+          // simple gradient left->right from base to slightly darkened
+          fill.style.background = `linear-gradient(90deg, ${base}, ${shadeColor(
+            base,
+            -18
+          )})`;
+          barWrap.appendChild(fill);
+          const pill = document.createElement("div");
+          pill.className = "score-pill";
+          pill.textContent = `${v}%`;
+          row.appendChild(name);
+          row.appendChild(barWrap);
+          row.appendChild(pill);
+          coachingList.appendChild(row);
+        });
+        // append coaching textual content if present
+        if (reportData.coachingSpace) {
+          const txt = document.createElement("div");
+          txt.style.marginTop = "10px";
+          txt.style.color = "var(--muted)";
+          txt.innerHTML = escapeHtml(reportData.coachingSpace).replace(
+            /\n/g,
+            "<br/>"
+          );
+          coachingList.appendChild(txt);
+        }
+
+        // Exercises: naive markdown-ish rendering using sections split by '---'
+        const exArea = document.getElementById("exerciseArea");
+        exArea.innerHTML = "";
+        const mcq = reportData.mcqExercises || reportData.exercises || "";
+        if (mcq) {
+          const sections = mcq.split("---");
+          sections.forEach((s) => {
+            const block = document.createElement("div");
+            block.style.marginBottom = "10px";
+            // if starts with '##' or '###' pick heading
+            const lines = s.trim().split("\n");
+            if (lines[0] && lines[0].startsWith("#")) {
+              const h = document.createElement("h3");
+              h.style.margin = "6px 0";
+              h.textContent = lines[0].replace(/^#+\s*/, "");
+              block.appendChild(h);
+              const rest = document.createElement("pre");
+              rest.textContent = lines.slice(1).join("\n");
+              block.appendChild(rest);
+            } else {
+              const pre = document.createElement("pre");
+              pre.textContent = s.trim();
+              block.appendChild(pre);
+            }
+            exArea.appendChild(block);
+          });
+        }
+      }
+
+      // small color shade helper (hex or rgb)
+      function shadeColor(hex, percent) {
+        // accept hex like #rrggbb or rgb(...) fallback
+        if (hex.startsWith("rgb")) return hex;
+        const f = parseInt(hex.slice(1), 16),
+          t = percent < 0 ? 0 : 255,
+          p = Math.abs(percent) / 100;
+        const R = f >> 16,
+          G = (f >> 8) & 0x00ff,
+          B = f & 0x0000ff;
+        const newR = Math.round((t - R) * p) + R;
+        const newG = Math.round((t - G) * p) + G;
+        const newB = Math.round((t - B) * p) + B;
+        return `rgb(${newR},${newG},${newB})`;
+      }
+
+      // if page loaded with global data, render automatically
+      if (window.reportData) {
+        renderReport(window.reportData);
+        setTimeout(() => {
+          window._rendered = true;
+        }, 500);
+      }
+      window.renderReport = renderReport;
+    </script>
+  </body>
+</html>
