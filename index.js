@@ -5,6 +5,8 @@ import fetch from "node-fetch";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import crypto from "crypto";
+import bodyParser from "body-parser";
 // import { ConfidentialClientApplication } from "@azure/msal-node";
 import { oboToken, requireAuth } from "./middlewares/middleware.js";
 import {
@@ -31,9 +33,76 @@ import multer from "multer";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { defaultSystemPromts } from "./controllers/custom_prompt.js";
 
+const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET;
+
 const upload = multer();
 
 const app = express();
+
+// Parse raw body for webhook verification
+app.use("/api/getZoomRecording", bodyParser.raw({ type: "*/*" }));
+
+app.get("/api/getZoomRecording", (req, res) => {
+  res.send("Zoom webhook endpoint is running");
+});
+
+// zoom webhook callback
+app.post("/api/getZoomRecording", async (req, res) => {
+  console.log("Recieve zoom webhook notification");
+
+  const signature = req.headers["x-zm-signature"];
+  const timestamp = req.headers["x-zm-request-timestamp"];
+
+  // 🔒 Verify Zoom signature
+  const message = `v0:${timestamp}:${req.body.toString()}`;
+  const hash = crypto
+    .createHmac("sha256", ZOOM_WEBHOOK_SECRET)
+    .update(message)
+    .digest("hex");
+
+  const expectedSignature = `v0=${hash}`;
+
+  if (signature !== expectedSignature) {
+    console.error("❌ Invalid Zoom webhook signature");
+    return res.status(401).send("Unauthorized");
+  }
+
+  const body = JSON.parse(req.body.toString());
+
+  // 🧪 URL validation (required once)
+  if (body.event === "endpoint.url_validation") {
+    const hashForValidation = crypto
+      .createHmac("sha256", ZOOM_WEBHOOK_SECRET)
+      .update(body.payload.plainToken)
+      .digest("hex");
+
+    return res.json({
+      plainToken: body.payload.plainToken,
+      encryptedToken: hashForValidation,
+    });
+  }
+
+  // 🎯 Recording completed event
+  if (body.event === "recording.completed") {
+    const meeting = body.payload.object;
+
+    console.log("✅ Recording ready!");
+    console.log("Meeting ID:", meeting.id);
+    console.log("Topic:", meeting.topic);
+
+    meeting.recording_files.forEach((file) => {
+      console.log("File:", file.file_type, file.download_url);
+    });
+
+    // 👉 TODO:
+    // - Save metadata to DB
+    // - Download files async
+    // - Trigger background job
+  }
+
+  res.sendStatus(200);
+});
+
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
@@ -474,7 +543,18 @@ app.get("/api/recordings", oboToken, async (req, res) => {
   }
 
   try {
-    let url = `https://graph.microsoft.com/v1.0/me/events?$top=50`;
+    const now = new Date();
+    const startOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() - 2,
+      now.getDate()
+    );
+    const startDate = startOfMonth.toISOString();
+    const endDate = now.toISOString();
+
+    let url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startDate}&endDateTime=${endDate}&$top=100`;
+    // ...existing code...
+    // let url = `https://graph.microsoft.com/v1.0/me/events?$top=50`;
     let events = [];
 
     while (url) {
@@ -512,9 +592,9 @@ app.get("/api/recordings", oboToken, async (req, res) => {
     const allMeetings = (
       await Promise.all(
         meetingJoinUrls?.map(async (url) => {
-          const encodedUrl = encodeURIComponent(url);
+          // const encodedUrl = encodeURIComponent(url);
           const res = await fetch(
-            `https://graph.microsoft.com/v1.0/me/onlineMeetings?$filter=JoinWebUrl%20eq%20'${encodedUrl}'`,
+            `https://graph.microsoft.com/v1.0/me/onlineMeetings?$filter=JoinWebUrl eq '${url}'`,
             {
               headers: { Authorization: `Bearer ${req.graphToken}` },
             }
