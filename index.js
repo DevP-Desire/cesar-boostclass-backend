@@ -185,6 +185,17 @@ app.post("/api/register", async (req, res) => {
       return res.status(409).send("User exists");
     }
 
+    // Resolve org image from Tokens table if not provided
+    let resolvedOrgImg = orgImg || "";
+    if (!resolvedOrgImg) {
+      try {
+        const orgEntity = await tableTokens.getEntity("token", organization);
+        resolvedOrgImg = orgEntity?.imageUrl || "";
+      } catch {
+        resolvedOrgImg = "";
+      }
+    }
+
     const userId = uuidv4();
     const hash = await bcrypt.hash(password, 10);
     await tableClient.createEntity({
@@ -195,7 +206,7 @@ app.post("/api/register", async (req, res) => {
       role: role,
       password: hash,
       organization: organization,
-      orgImg: orgImg || "",
+      orgImg: resolvedOrgImg,
       orgAdminEnabled: "false",
     });
     res.sendStatus(201);
@@ -208,6 +219,17 @@ app.post("/api/users/bulk-upload", async (req, res) => {
   const { users, organization, orgImg } = req.body;
   if (!Array.isArray(users) || !organization) {
     return res.status(400).json({ error: "Missing users or organization" });
+  }
+
+  // Resolve org image from Tokens table if not provided
+  let resolvedOrgImg = orgImg || "";
+  if (!resolvedOrgImg) {
+    try {
+      const orgEntity = await tableTokens.getEntity("token", organization);
+      resolvedOrgImg = orgEntity?.imageUrl || "";
+    } catch {
+      resolvedOrgImg = "";
+    }
   }
 
   // Setup mail transporter once for performance
@@ -258,7 +280,7 @@ app.post("/api/users/bulk-upload", async (req, res) => {
         role: role,
         password: hash,
         organization: organization,
-        orgImg: orgImg || "",
+        orgImg: resolvedOrgImg,
         orgAdminEnabled: "false",
       });
 
@@ -544,16 +566,24 @@ app.get("/api/recordings", oboToken, async (req, res) => {
 
   try {
     const now = new Date();
-    const startOfMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() - 2,
-      now.getDate()
-    );
-    const startDate = startOfMonth.toISOString();
-    const endDate = now.toISOString();
+    const oneMonthAgo = new Date();
+    oneMonthAgo.setMonth(now.getMonth() - 4);
+    const fromDate = oneMonthAgo.toISOString();
 
-    let url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startDate}&endDateTime=${endDate}&$top=100`;
-    // ...existing code...
+    // Use $filter for start/dateTime greater than fromDate
+    let url = `https://graph.microsoft.com/v1.0/me/events?$top=50&$filter=start/dateTime ge '${fromDate}'`;
+
+    // const now = new Date();
+    // const startOfMonth = new Date(
+    //   now.getFullYear(),
+    //   now.getMonth() - 2,
+    //   now.getDate()
+    // );
+    // const startDate = startOfMonth.toISOString();
+    // const endDate = now.toISOString();
+
+    // let url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startDate}&endDateTime=${endDate}&$top=100`;
+
     // let url = `https://graph.microsoft.com/v1.0/me/events?$top=50`;
     let events = [];
 
