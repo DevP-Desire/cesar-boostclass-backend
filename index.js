@@ -1174,7 +1174,6 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
   const cefrLevel = "B2";
 
   const results = {};
-
   const orgPrompts = await getOrganizationPrompts(organization);
 
   let existingAssessment = null;
@@ -1216,81 +1215,98 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
     console.error("Error setting assessment to pending:", err);
   }
 
-  try {
-    results.openAiObservations = await analyzeTextWithOpenAI(
-      text,
-      cefrLevel,
-      orgPrompts
-    );
-  } catch (error) {
-    console.log("Error in OpenAI analysis:", error);
+  if (orgPrompts.ENABLE_ANALYZE_TEXT_WITH_OPENAI) {
+    try {
+      results.openAiObservations = await analyzeTextWithOpenAI(
+        text,
+        cefrLevel,
+        orgPrompts
+      );
+    } catch (error) {
+      console.log("Error in OpenAI analysis:", error);
+      results.openAiObservations = [];
+    }
+  } else {
     results.openAiObservations = [];
   }
 
-  try {
-    const scores = await analyzeContentOpenAI(text, cefrLevel, orgPrompts);
-    results.openAiScores = scores.map((n) =>
-      Math.max(0, Math.min(100, Math.round(n)))
-    );
-  } catch (err) {
-    console.log("Error in OpenAI scoring:", err);
-    results.openAiScores = [0, 0, 0];
+  if (orgPrompts.ENABLE_ANALYZE_CONTENT_OPENAI) {
+    try {
+      const scores = await analyzeContentOpenAI(text, cefrLevel, orgPrompts);
+      results.openAiScores = scores.map((n) =>
+        Math.max(0, Math.min(100, Math.round(n)))
+      );
+    } catch (err) {
+      console.log("Error in OpenAI scoring:", err);
+      results.openAiScores = [0, 0, 0];
+    }
+  } else {
+    results.openAiScores = [];
   }
 
-  try {
-    results.pronunciationChallenge = await generatePronunciationChallenge(
-      text,
-      orgPrompts
-    );
-  } catch (error) {
-    console.log("Error in pronunciation challenge:", error);
+  if (orgPrompts.ENABLE_PRONUNCIATION_CHALLENGE) {
+    try {
+      results.pronunciationChallenge = await generatePronunciationChallenge(
+        text,
+        orgPrompts
+      );
+    } catch (error) {
+      console.log("Error in pronunciation challenge:", error);
+      results.pronunciationChallenge = "";
+    }
+  } else {
     results.pronunciationChallenge = "";
   }
 
-  try {
-    const studentDisplayName = name.trim() || "Student";
+  if (orgPrompts.ENABLE_COACHING_SPACE) {
+    try {
+      const studentDisplayName = name.trim() || "Student";
+      results.coachingSpace = await generateCoachingSpace(
+        text,
+        studentDisplayName,
+        orgPrompts
+      );
 
-    results.coachingSpace = await generateCoachingSpace(
-      text,
-      studentDisplayName,
-      orgPrompts
-    );
-
-    const coachingKPIs = parseCoachingSpaceMarkdown(results.coachingSpace);
-
-    results.scores = {
-      emotionalTone: coachingKPIs.emotionalTone?.score || 0,
-      // questioningStrategy: coachingKPIs.questioningStrategy?.score || 0,
-      collaborativeLanguage: coachingKPIs.collaborativeLanguage?.score || 0,
-      growthMindset: coachingKPIs.growthMindset?.score || 0,
-    };
-  } catch (error) {
-    console.log("Error in coaching space:", error);
+      const coachingKPIs = parseCoachingSpaceMarkdown(results.coachingSpace);
+      results.scores = {
+        emotionalTone: coachingKPIs.emotionalTone?.score || 0,
+        collaborativeLanguage: coachingKPIs.collaborativeLanguage?.score || 0,
+        growthMindset: coachingKPIs.growthMindset?.score || 0,
+      };
+    } catch (error) {
+      console.log("Error in coaching space:", error);
+      results.coachingSpace = "";
+      results.scores = {};
+    }
+  } else {
     results.coachingSpace = "";
-    results.scores = {
-      emotionalTone: 0,
-      // questioningStrategy: 0,
-      collaborativeLanguage: 0,
-      growthMindset: 0,
-    };
+    results.scores = {};
   }
 
-  try {
-    results.Vocabulary_Booster = await Vocabulary_Booster(text, orgPrompts);
-  } catch (error) {
-    console.log("Error in vocabulary booster:", error);
-    results.Vocabulary_Booster = null;
+  if (orgPrompts.ENABLE_VOCABULARY_BOOSTER) {
+    try {
+      results.Vocabulary_Booster = await Vocabulary_Booster(text, orgPrompts);
+    } catch (error) {
+      console.log("Error in vocabulary booster:", error);
+      results.Vocabulary_Booster = [];
+    }
+  } else {
+    results.Vocabulary_Booster = [];
   }
 
-  try {
-    results.mcqExercises = await generateMCQs(
-      text,
-      results.openAiObservations,
-      cefrLevel,
-      orgPrompts
-    );
-  } catch (error) {
-    console.log("Error in MCQ generation:", error);
+  if (orgPrompts.ENABLE_GENERATE_MCQS) {
+    try {
+      results.mcqExercises = await generateMCQs(
+        text,
+        results.openAiObservations,
+        cefrLevel,
+        orgPrompts
+      );
+    } catch (error) {
+      console.log("Error in MCQ generation:", error);
+      results.mcqExercises = "";
+    }
+  } else {
     results.mcqExercises = "";
   }
 
@@ -1636,10 +1652,8 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
   if (!org) return res.status(400).send("Missing organization name");
 
   try {
-    // Fetch the organization entity from the Tokens table
     const entity = await tableTokens.getEntity("token", org);
 
-    // List of prompt keys to return (should match frontend keys)
     const promptKeys = [
       "ANALYZE_TEXT_WITH_OPENAI",
       "ANALYZE_CONTENT_OPENAI",
@@ -1649,10 +1663,10 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
       "GENERATE_MCQS",
     ];
 
-    // Build the response object with only the prompt fields
     const prompts = {};
     promptKeys.forEach((key) => {
       prompts[key] = entity[key] || "";
+      prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] !== false;
     });
 
     res.json(prompts);
@@ -1666,19 +1680,24 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
 
 app.put("/api/organizations/:org/prompts", async (req, res) => {
   const org = req.params.org;
-  const { key, value } = req.body;
+  const { key, value, enabled } = req.body;
   if (!org || !key) return res.status(400).send("Missing organization or key");
 
   try {
-    // Upsert the prompt value for the given key
-    await tableTokens.upsertEntity(
-      {
-        partitionKey: "token",
-        rowKey: org,
-        [key]: value,
-      },
-      "Merge"
-    );
+    const updateEntity = {
+      partitionKey: "token",
+      rowKey: org,
+    };
+
+    if (value !== undefined) {
+      updateEntity[key] = value;
+    }
+
+    if (enabled !== undefined) {
+      updateEntity[`ENABLE_${key}`] = enabled;
+    }
+
+    await tableTokens.upsertEntity(updateEntity, "Merge");
     res.json({ success: true });
   } catch (err) {
     res.status(500).send("Failed to update prompt");

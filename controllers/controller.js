@@ -266,16 +266,35 @@ async function getOrganizationPrompts(org) {
   try {
     const entity = await tableTokens.getEntity("token", org);
     return {
+      // Prompts
       ANALYZE_TEXT_WITH_OPENAI: entity.ANALYZE_TEXT_WITH_OPENAI || "",
       ANALYZE_CONTENT_OPENAI: entity.ANALYZE_CONTENT_OPENAI || "",
       VOCABULARY_BOOSTER: entity.VOCABULARY_BOOSTER || "",
       PRONUNCIATION_CHALLENGE: entity.PRONUNCIATION_CHALLENGE || "",
       COACHING_SPACE: entity.COACHING_SPACE || "",
       GENERATE_MCQS: entity.GENERATE_MCQS || "",
+
+      // Toggles (default true if missing)
+      ENABLE_ANALYZE_TEXT_WITH_OPENAI:
+        entity.ENABLE_ANALYZE_TEXT_WITH_OPENAI !== false,
+      ENABLE_ANALYZE_CONTENT_OPENAI:
+        entity.ENABLE_ANALYZE_CONTENT_OPENAI !== false,
+      ENABLE_VOCABULARY_BOOSTER:
+        entity.ENABLE_VOCABULARY_BOOSTER !== false,
+      ENABLE_PRONUNCIATION_CHALLENGE:
+        entity.ENABLE_PRONUNCIATION_CHALLENGE !== false,
+      ENABLE_COACHING_SPACE: entity.ENABLE_COACHING_SPACE !== false,
+      ENABLE_GENERATE_MCQS: entity.ENABLE_GENERATE_MCQS !== false,
     };
   } catch (err) {
-    // fallback to default prompts if not found
-    return {};
+    return {
+      ENABLE_ANALYZE_TEXT_WITH_OPENAI: true,
+      ENABLE_ANALYZE_CONTENT_OPENAI: true,
+      ENABLE_VOCABULARY_BOOSTER: true,
+      ENABLE_PRONUNCIATION_CHALLENGE: true,
+      ENABLE_COACHING_SPACE: true,
+      ENABLE_GENERATE_MCQS: true,
+    };
   }
 }
 
@@ -1245,9 +1264,7 @@ function buildReportHtml(report) {
 //     <tr>
 //       <td class="vocabWord">${escapeHtml(v.word || "N/A")}</td>
 //       <td class="vocabOccurrences">${v.occurrences || 0}</td>
-//       <td class="vocabSuggestions">${(v.suggestions || [])
-//         .map(escapeHtml)
-//         .join(", ")}</td>
+//       <td class="vocabSuggestions">${(v.suggestions || []).map(escapeHtml).join(", ")}</td>
 //     </tr>
 //   `
 //     ).join("") || '<tr><td colspan="3">No vocabulary data.</td></tr>';
