@@ -950,8 +950,8 @@ app.get("/api/zoom/recordings", async (req, res) => {
   }
 
   const fromDate = new Date();
-  fromDate.setMonth(fromDate.getMonth() - 6);
-  fromDate.setDate(fromDate.getDate() + 1);
+  fromDate.setMonth(fromDate.getMonth() - 1);
+  // fromDate.setDate(fromDate.getDate() + 1);
 
   try {
     const userEntities = tableClient.listEntities({
@@ -968,7 +968,7 @@ app.get("/api/zoom/recordings", async (req, res) => {
     const response = await fetch(
       `https://api.zoom.us/v2/users/me/recordings?from=${
         fromDate.toISOString().split("T")[0]
-      }`,
+      }&page_size=300`,
       {
         headers: {
           Authorization: `Bearer ${userEntity.accessToken}`,
