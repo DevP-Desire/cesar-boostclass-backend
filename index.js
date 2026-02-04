@@ -82,11 +82,14 @@ app.post("/api/getZoomRecording", async (req, res) => {
     });
   }
 
-  // 🎯 Recording completed event
-  if (body.event === "recording.completed") {
+  // 🎯 Recording transcript completed event
+  if (body.event === "recording.transcript_completed") {
     const meeting = body.payload.object;
 
     console.log("✅ Recording ready!");
+    console.log("body:", JSON.stringify(body, null, 2));
+    console.log("data:", JSON.stringify(body.payload, null, 2));
+    console.log("object data:", JSON.stringify(meeting, null, 2));
     console.log("Meeting ID:", meeting.id);
     console.log("Topic:", meeting.topic);
 
@@ -168,7 +171,7 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes cache
 const JWT_SECRET = process.env.JWT_SECRET;
 
 app.post("/api/register", async (req, res) => {
-  const { name, role, email, password, organization, orgImg } = req.body;
+  const { name, role, email, password, organization, orgImg, zoomUsername, teamsUsername } = req.body;
   if (!name || !role || !email || !password || !organization)
     return res.status(400).send("Missing fields");
   try {
@@ -207,6 +210,8 @@ app.post("/api/register", async (req, res) => {
       password: hash,
       organization: organization,
       orgImg: resolvedOrgImg,
+      zoomUsername: zoomUsername || "",
+      teamsUsername: teamsUsername || "",
       orgAdminEnabled: "false",
     });
     res.sendStatus(201);
@@ -281,6 +286,8 @@ app.post("/api/users/bulk-upload", async (req, res) => {
         password: hash,
         organization: organization,
         orgImg: resolvedOrgImg,
+        zoomUsername: user.zoomUsername || "",
+        teamsUsername: user.teamsUsername || "",
         orgAdminEnabled: "false",
       });
 
@@ -293,7 +300,6 @@ app.post("/api/users/bulk-upload", async (req, res) => {
           html: `
             <p>Welcome <b>${name}</b>! Your account has been created.</p>
             <p><b>Email:</b> ${email}</p>
-            <p><b>Password:</b> ${password}</p>
             <p><b>Role:</b> ${role}</p>
             <p>Best regards,<br/>BoostClass AI</p>
           `,
@@ -402,6 +408,8 @@ app.get("/api/users", async (req, res) => {
         role: entity.role,
         token: entity.token,
         orgAdminEnabled: entity.orgAdminEnabled || "false",
+        zoomUsername: entity.zoomUsername || "",
+        teamsUsername: entity.teamsUsername || "",
       });
     }
     res.json(users);
@@ -426,6 +434,8 @@ app.get("/api/users/:email", async (req, res) => {
           name: entity.name,
           role: entity.role,
           connections: entity.connections,
+          zoomUsername: entity.zoomUsername || "",
+          teamsUsername: entity.teamsUsername || "",
         },
       ]);
     }
@@ -474,7 +484,7 @@ app.delete("/api/users/delete", async (req, res) => {
 
 app.put("/api/users/update", async (req, res) => {
   try {
-    const { email, name, role } = req.body;
+    const { email, name, role, password, zoomUsername, teamsUsername } = req.body;
 
     if (!email) return res.status(400).send("Missing email");
 
@@ -496,6 +506,51 @@ app.put("/api/users/update", async (req, res) => {
       return res.status(404).send("User not found");
     }
 
+    // If a new platform username is being set, clear that username from any other user
+    // to keep platform usernames unique across users (case-sensitive exact match).
+    const cleanupIfDuplicate = async (fieldName, newValue) => {
+      if (newValue === undefined || newValue === null) return;
+      const newTrim = String(newValue).trim();
+      if (!newTrim) return;
+
+      // Prefer limiting the scan to the same organization to reduce load
+      const orgFilter = (user.organization || "").toString().replace(/'/g, "''");
+
+      const listOptions = orgFilter
+        ? { queryOptions: { filter: `organization eq '${orgFilter}'` } }
+        : undefined;
+
+      // Iterate users in the same org (falls back to full scan if org not present)
+      for await (const other of tableClient.listEntities(listOptions)) {
+        const otherVal = (other[fieldName] || "").toString().trim();
+        const otherEmail = (other.email || "").toString().toLowerCase();
+        // exact (case-sensitive) comparison of usernames, ensure we don't touch the target user's own record
+        if (otherVal && otherVal === newTrim && otherEmail !== safeEmail) {
+          try {
+            await tableClient.updateEntity(
+              {
+                partitionKey: other.partitionKey,
+                rowKey: other.rowKey,
+                [fieldName]: "",
+              },
+              "Merge",
+              { etag: other.etag ?? "*" }
+            );
+          } catch (e) {
+            console.warn(`Failed to clear ${fieldName} for ${otherEmail}:`, e.message || e);
+          }
+        }
+      }
+    };
+
+    // Cleanup duplicates only for the platform fields that are actually being updated
+    if (zoomUsername !== undefined && zoomUsername !== null) {
+      await cleanupIfDuplicate("zoomUsername", zoomUsername);
+    }
+    if (teamsUsername !== undefined && teamsUsername !== null) {
+      await cleanupIfDuplicate("teamsUsername", teamsUsername);
+    }
+
     // Prepare update object with only fields that are provided
     const updateEntity = {
       partitionKey: user.partitionKey,
@@ -505,13 +560,22 @@ app.put("/api/users/update", async (req, res) => {
     // Only include fields that are provided and allowed to be updated
     if (name) updateEntity.name = name;
     if (role) updateEntity.role = role;
+    if (zoomUsername !== undefined) updateEntity.zoomUsername = zoomUsername;
+    if (teamsUsername !== undefined) updateEntity.teamsUsername = teamsUsername;
+    if (password) {
+      // hash new password before storing
+      const hash = await bcrypt.hash(password, 10);
+      updateEntity.password = hash;
+    }
 
     // Update the user
     await tableClient.updateEntity(updateEntity, "Merge", {
       etag: user.etag ?? "*",
     });
 
-    io.emit("userRoleChanged", { email, role });
+    if (role) {
+      io.emit("userRoleChanged", { email, role });
+    }
 
     return res.status(200).json({
       success: true,
@@ -1438,7 +1502,6 @@ app.post("/api/sendWelcomeMail", async (req, res) => {
       html: `
         <p>Welcome <b>${name}</b>! Your account has been created.</p>
         <p><b>Email:</b> ${email}</p>
-        <p><b>Password:</b> ${password}</p>
         <p><b>Role:</b> ${role}</p>
         <p>Best regards,<br/>BoostClass AI</p>
       `,
