@@ -15,6 +15,7 @@
     "@azure/identity": "latest",
     "@azure/msal-node": "^2.7.0",
     "@azure/storage-blob": "^12.29.1",
+    "@azure/storage-queue": "^12.29.0",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",

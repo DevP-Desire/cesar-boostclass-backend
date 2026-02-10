@@ -1,578 +1,421 @@
-<!-- report-template.html -->
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Coaching Report — PDF</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        /* Palette derived from the logo: purple, teal, yellow, dark-navy */
-        --primary: #6f64d6; /* purple */
-        --accent: #0f1724; /* dark navy (text) */
-        --teal: #00b7c7; /* teal */
-        --sun: #ffd23f; /* yellow */
-        --bg: #f6f8fb;
-        --card: #ffffff;
-        --muted: #6b7280;
-        --max-width: 900px;
-        --pad: 18px;
-      }
-      html,
-      body {
-        height: 100%;
-        margin: 0;
-        background: var(--bg);
-        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
-        color: var(--accent);
-      }
-      .report {
-        max-width: var(--max-width);
-        margin: 22px auto;
-        padding: 18px;
-      }
-      .header {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 12px;
-        background: linear-gradient(90deg, #ffffff, #fbfdff);
-        border-radius: 10px;
-        border-left: 6px solid var(--primary);
-      }
-      .logo {
-        width: 88px;
-        height: 64px;
-        background: transparent;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .logo img {
-        max-width: 100%;
-        max-height: 64px;
-        display: block;
-      }
-      .title {
-        flex: 1;
-      }
-      .title h1 {
-        margin: 0;
-        font-size: 20px;
-        color: var(--primary);
-        letter-spacing: 0.2px;
-      }
-      .title p {
-        margin: 4px 0 0;
-        color: var(--muted);
-        font-size: 13px;
-      }
-      .meta {
-        font-size: 12px;
-        color: var(--muted);
-      }
-      .section {
-        margin-top: 16px;
-        background: var(--card);
-        padding: 14px;
-        border-radius: 10px;
-        box-shadow: 0 6px 18px rgba(12, 18, 35, 0.03);
-      }
-      .section h2 {
-        margin: 0 0 12px;
-        font-size: 15px;
-        color: var(--accent);
-      }
-      .top-grid {
-        display: grid;
-        grid-template-columns: 1fr 340px;
-        gap: 14px;
-      }
-      .transcript {
-        white-space: pre-wrap;
-        color: #111827;
-        font-size: 14px;
-        padding: 8px;
-        border-radius: 8px;
-        background: linear-gradient(180deg, #fff, #fbfdff);
-        border: 1px solid #eef4fb;
-      }
-      .donut-grid {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-start;
-      }
-      .donut-card {
-        width: 150px;
-        height: 150px;
-        padding: 10px;
-        border-radius: 8px;
-        background: linear-gradient(180deg, #fff, #fbfdff);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid #eef4fb;
-      }
-      .donut-card canvas {
-        width: 84px !important;
-        height: 84px !important;
-      }
-      .donut-label {
-        margin-top: 8px;
-        font-size: 12px;
-        color: var(--muted);
-        text-align: center;
-      }
-      table.vocab,
-      table.grammar {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 13px;
-      }
-      table.vocab th,
-      table.vocab td,
-      table.grammar th,
-      table.grammar td {
-        padding: 8px;
-        border-bottom: 1px solid #eef2f7;
-        text-align: left;
-        vertical-align: top;
-      }
-      table.vocab th,
-      table.grammar th {
-        background: #fbfdff;
-        font-weight: 700;
-        color: var(--primary);
-      }
-      .coach-list {
-        display: grid;
-        gap: 10px;
-      }
-      .coach-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .coach-name {
-        width: 180px;
-        font-weight: 700;
-        color: var(--accent);
-        font-size: 13px;
-      }
-      .coach-bar {
-        flex: 1;
-        height: 14px;
-        border-radius: 10px;
-        background: #eef6f8;
-        overflow: hidden;
-        position: relative;
-        border: 1px solid #e6f0f2;
-      }
-      .coach-fill {
-        height: 100%;
-        border-radius: 10px;
-      }
-      .score-pill {
-        width: 48px;
-        text-align: center;
-        font-weight: 700;
-      }
-      .pron {
-        /* color: var(--muted); */
-        font-size: 13px;
-        padding: 8px;
-        border-radius: 8px;
-        background: #fbfdff;
-        border: 1px solid #eef4fb;
-      }
-      .ex-list pre {
-        white-space: pre-wrap;
-        font-family: inherit;
-        font-size: 13px;
-      }
-      footer {
-        margin-top: 18px;
-        text-align: center;
-        color: var(--muted);
-        font-size: 12px;
-      }
-      @media print {
-        body {
-          background: white;
-        }
-        .report {
-          margin: 0;
-          padding: 8px;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="report" id="reportRoot">
-      <div class="header">
-        <!-- <div class="logo" id="logoWrap">
-          <img id="logoImg" alt="Company Logo" src="" />
-        </div> -->
-        <div class="title">
-          <h1 id="userName">Speaker Name</h1>
-          <p class="meta" id="meetingMeta">Meeting • Transcript</p>
-          <div
-            style="margin-top: 6px; font-size: 12px; color: var(--muted)"
-            id="emailLine"
-          ></div>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>AI Review Report</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <link rel="stylesheet" href="./styles.css" />
+  <style>
+    /* allow custom height from puppeteer */
+    @page { size: auto; margin: 12mm 10mm; }
+    body { background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="fluentifyContainer" style="padding:0">
+    <div id="reportContainer">
+      <div id="pdf" class="pdfReport">
+        <div class="reportHeader" style="display:flex;align-items:center;justify-content:space-between;">
+          <img id="reportLogo" class="reportLogo" alt="Logo" />
+          <h2 style="font-weight:bold;margin:0">AI Review</h2>
         </div>
-        <div style="text-align: right">
-          <div
-            style="font-weight: 800; color: var(--primary); font-size: 18px"
-            id="overallScore"
-          >
-            Overall
+
+        <p><strong>Meeting:</strong> <span id="meetingSubject">N/A</span></p>
+        <p><strong>Date & Time:</strong> <span id="meetingDate">N/A</span></p>
+        <p><strong>Duration:</strong> <span id="meetingDuration">N/A</span></p>
+        <p><strong>Student:</strong> <span id="speakerName">N/A</span></p>
+        <br />
+
+        <div id="scoresSection"></div>
+
+        <div id="observationsSection"></div>
+
+        <div id="vocabSection"></div>
+
+        <div id="pronunciationSection"></div>
+
+        <div id="coachingSection"></div>
+
+        <div id="exercisesSection"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__REPORT_PAYLOAD__ = /*__REPORT_PAYLOAD__*/;
+
+    const payload = window.__REPORT_PAYLOAD__ || {};
+    const report = payload.reportData || {};
+    const meeting = payload.meeting || {};
+    const transcript = payload.transcript || {};
+    const orgLogo = payload.orgLogo || "";
+    const orgName = payload.organization || "BoostClass";
+
+    const escapeHtml = (str) =>
+      String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const formatDate = (dateStr) => {
+      try {
+        const d = new Date(dateStr);
+        return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
+      } catch {
+        return "N/A";
+      }
+    };
+
+    const formatDuration = (minutes) => {
+      const rounded = Math.round(Number(minutes || 0));
+      if (rounded < 60) return `${rounded}m`;
+      const hours = Math.floor(rounded / 60);
+      const remaining = rounded % 60;
+      return `${hours}h ${remaining}m`;
+    };
+
+    // Header data
+    document.getElementById("meetingSubject").textContent = meeting.subject || "N/A";
+    document.getElementById("meetingDate").textContent = formatDate(transcript.recording_end || transcript.recordingEnd || "");
+    document.getElementById("meetingDuration").textContent = formatDuration(meeting.duration || 0);
+    document.getElementById("speakerName").textContent = report.speakerName || "N/A";
+
+    const logoEl = document.getElementById("reportLogo");
+    if (orgLogo && orgLogo !== "undefined") {
+      logoEl.src = orgLogo;
+      logoEl.style.display = "block";
+    } else {
+      logoEl.src = "./logo.png";
+      logoEl.style.display = "block";
+    }
+
+    // --------- Scores Section (Donut + breakdown) ----------
+    function getColor(score) {
+      if (score >= 80) return "#1e8e3e";
+      if (score >= 60) return "#d3af2a";
+      return "#a72525";
+    }
+
+    function renderDonut(canvasId, score) {
+      const ctx = document.getElementById(canvasId).getContext("2d");
+      const mainColor = getColor(score);
+      new Chart(ctx, {
+        type: "doughnut",
+        data: { datasets: [{ data: [score, 100 - score], backgroundColor: [mainColor, "#f3f2f1"], borderColor: [mainColor, "#f3f2f1"], borderWidth: 1 }] },
+        options: { cutout: "80%", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: false }
+      });
+    }
+
+    function buildScoreCard(title, score, breakdown, canvasId) {
+      return `
+        <div class="scoreCard">
+          <div class="scoreHeader">
+            <h3 class="scoreTitle">${title} score</h3>
           </div>
-          <div style="font-size: 12px; color: var(--muted)">
-            AI Observations Summary
+          <div class="chartSection">
+            <div class="donutContainer" style="position:relative">
+              <canvas id="${canvasId}"></canvas>
+              <div class="scoreValue">${score}</div>
+            </div>
+            <div class="breakdownSection">
+              <h4 class="breakdownTitle">Score breakdown</h4>
+              <div class="breakdownList">
+                ${breakdown.map(item => `
+                  <div class="breakdownItem">
+                    <div class="itemHeader">
+                      <div class="itemLabel"><span>${item.label}</span></div>
+                      <span class="itemScore">${item.score} / 100</span>
+                    </div>
+                    <div class="progressBar">
+                      <div class="progressFill" style="width:${item.score}%;background-color:${getColor(item.score)}"></div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      `;
+    }
 
-      <!-- <div class="section top-grid">
-      <div>
-        <h2>Transcript</h2>
-        <div class="transcript" id="transcriptText"></div>
-      </div>
-    </div> -->
-      <div class="section">
-        <div>
-          <h2>Score Overview</h2>
-          <div class="donut-grid" id="donutGrid"></div>
+    function renderScores() {
+      const s = report.scores || {};
+      const openAiScores = report.openAiScores || [];
+      const communicationScore = Math.round(((s.emotionalTone||0)+(s.collaborativeLanguage||0)+(s.growthMindset||0))/3);
+      const speakingScore = Math.round(((openAiScores[0]||0)+(openAiScores[1]||0)+(openAiScores[2]||0))/3);
+
+      if (!(report.scores && openAiScores.length)) return "";
+
+      return `
+        <h3 class="scoreheader">
+          <div class="simpleBanner"><h1>Your Class Score</h1></div>
+        </h3>
+        <div class="chartsRow" style="margin-bottom:25px">
+          <div class="chartColumn">
+            ${buildScoreCard("Communication", communicationScore, [
+              { label: "Emotional Tone", score: s.emotionalTone || 0 },
+              { label: "Collaborative Language", score: s.collaborativeLanguage || 0 },
+              { label: "Growth Mindset", score: s.growthMindset || 0 },
+            ], "communicationChart")}
+          </div>
+          <div class="chartColumn">
+            ${buildScoreCard("Speaking Performance", speakingScore, [
+              { label: "Vocabulary score", score: openAiScores[0] || 0 },
+              { label: "Grammar score", score: openAiScores[1] || 0 },
+              { label: "Fluency score", score: openAiScores[2] || 0 },
+            ], "speakingChart")}
+          </div>
         </div>
-      </div>
+      `;
+    }
 
-      <div class="section">
-        <div>
-          <h2>Grammar Corrections</h2>
-          <table class="grammar" id="grammarTable">
+    // --------- Observations ----------
+    function renderObservations() {
+      const obs = Array.isArray(report.openAiObservations) ? report.openAiObservations : [];
+      if (!obs.length) return "";
+      return `
+        <div class="topMistakesSection" style="margin:0;margin-bottom:25px">
+          <div class="topMistake">
+            <div class="simpleBanner"><h1>Grammar Corrections</h1></div>
+          </div>
+          <table class="observationsTable">
             <thead>
-              <tr>
-                <th>Mistake</th>
-                <th>Correction</th>
-                <th>Explanation</th>
-              </tr>
+              <tr><th>Mistake</th><th>Correction</th><th>Explanation</th></tr>
             </thead>
-            <tbody></tbody>
+            <tbody>
+              ${obs.map(o => `
+                <tr>
+                  <td>${o.mistake || ""}</td>
+                  <td>${o.correction || ""}</td>
+                  <td>${o.explanation || ""}</td>
+                </tr>
+              `).join("")}
+            </tbody>
           </table>
         </div>
-      </div>
+      `;
+    }
 
-      <div class="section">
-        <h2>Vocabulary Booster</h2>
-        <table class="vocab" id="vocabTable">
-          <thead>
-            <tr>
-              <th>Word</th>
-              <th>Count</th>
-              <th>Suggestions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="section">
-        <div>
-          <h2>Pronunciation Challenges</h2>
-          <span class="pron" id="pronunciationArea">
-            (no pronunciation notes)
-          </span>
+    // --------- Vocabulary ----------
+    function renderVocabulary() {
+      const vocab = Array.isArray(report.Vocabulary_Booster) ? report.Vocabulary_Booster : [];
+      if (!vocab.length) return "";
+      return `
+        <div class="topMistakesSection" style="margin:0;margin-bottom:25px">
+          <div class="topMistake">
+            <div class="simpleBanner"><h1>Vocabulary Booster</h1></div>
+          </div>
+          <table class="observationsTable">
+            <thead>
+              <tr><th>Word</th><th>Occurrences</th><th>Suggestions</th></tr>
+            </thead>
+            <tbody>
+              ${vocab.map(v => `
+                <tr>
+                  <td class="vocabWord">${v.word || ""}</td>
+                  <td class="vocabOccurrences">${v.occurrences || 0}</td>
+                  <td class="vocabSuggestions">${Array.isArray(v.suggestions) ? v.suggestions.join(", ") : (v.suggestions || "")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
         </div>
-      </div>
-      <div class="section">
-        <div>
-          <h2>Coaching Space</h2>
-          <div class="coach-list" id="coachingList"></div>
+      `;
+    }
+
+    // --------- Pronunciation ----------
+    function renderPronunciation() {
+      const text = report.pronunciationChallenge || "";
+      if (!text) return "";
+      const words = text.split("\n").map(w => w.replace(/["]/g, "").trim()).filter(Boolean);
+
+      return `
+        <div class="sectionContainer" style="margin:0;margin-bottom:25px">
+          <div class="pronunciationChallengeSection" style="margin:0">
+            <div class="simpleBanner"><h1>Pronunciation Challenge</h1></div>
+            <div class="challengeInstructions">
+              <div><strong>Challenge time!</strong>
+                <span style="margin-left:8px">Read the words below <strong>out loud three times</strong> — nice and clear!</span>
+              </div>
+            </div>
+            <div class="challengeWordsContainer">
+              <div class="wordsGrid">
+                ${words.map(w => `<div class="challengeWord">${w}</div>`).join("")}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      `;
+    }
 
-      <div class="section">
-        <h2>Practice Exercises & Answers</h2>
-        <div class="ex-list" id="exerciseArea"></div>
-      </div>
+    // --------- Coaching ----------
+    function renderCoaching() {
+      const coachingRaw = report.coachingSpace || "";
+      if (!coachingRaw) return "";
 
-      <footer>Generated by Coaching Report • Confidential</footer>
-    </div>
+      const sections = coachingRaw.split(/(?=^##\s)/gm).filter(s => s.trim().startsWith("##"));
+      const items = sections.map(section => {
+        const titleMatch = section.match(/^##\s*\d️⃣\s*(.*?)\s*–\s*(\d+)/);
+        const analysisMatch = section.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Coaching Tip:\*\*|$)/);
+        const tipMatch = section.match(/\*\*Coaching Tip:\*\*\s*([\s\S]*)/);
 
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <script>
-      /* Utility helpers */
-      function escapeHtml(s) {
-        if (!s && s !== 0) return "";
-        return String(s)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-      }
-      function getColorForValue(v) {
-        if (v >= 70) return "#16a34a"; // green
-        if (v >= 40) return "#f59e0b"; // yellow
-        return "#ef4444"; // red
-      }
-      function gradientForValue(ctx, colorHex) {
-        // create horizontal gradient from color to slightly darker
-        const g = ctx.createLinearGradient(0, 0, 120, 0);
-        // colorHex to rgb fallback:
-        g.addColorStop(0, colorHex);
-        g.addColorStop(1, colorHex);
-        return g;
-      }
-      /* Render the report using a JS object reportData */
-      function renderReport(reportData) {
-        // // Logo loading: prefer ./logo.png (in same dir as HTML), else try known container path.
-        // const logoImg = document.getElementById("logoImg");
-        // // try local logo first (relative), then fallback to provided absolute path
-        // const localLogo = "./logo.png";
-        // const fallback = "/mnt/data/7023591f-1380-4910-b764-fc93a3eea9ce.png";
-        // // We'll attempt to set both; puppeteer should be able to load local file paths if present
-        // logoImg.src = localLogo;
-        // logoImg.onerror = () => {
-        //   logoImg.src = fallback;
-        // };
-        // logoImg.onload = () => {
-        //   /* ok */
-        // };
+        if (!titleMatch) return "";
+        const title = titleMatch[1].trim();
+        const score = parseInt(titleMatch[2], 10);
+        const analysis = analysisMatch ? analysisMatch[1].trim() : "Not available.";
+        const tip = tipMatch ? tipMatch[1].trim() : "";
 
-        // Header
-        document.getElementById("userName").textContent =
-          reportData.speakerName || reportData.speakerEmail || "Unknown";
-        document.getElementById("meetingMeta").textContent = "Coaching Report";
-        document.getElementById("emailLine").textContent =
-          reportData.speakerEmail || "";
+        return `
+          <div class="linearChartItem">
+            <div class="chartHeader">
+              <span class="chartLabel">${title} - ${score}/100</span>
+              <div class="scoreTrack">
+                <div class="scoreIndicator" style="right:${score}%"></div>
+              </div>
+            </div>
+            <div class="feedbackContainer">
+              <p class="analysisText"><strong>Analysis:</strong> ${analysis}</p>
+              <p class="coachingTip"><strong>Coaching Tip:</strong> ${tip}</p>
+            </div>
+          </div>
+        `;
+      }).join("");
 
-        // // Transcript
-        // document.getElementById("transcriptText").textContent =
-        //   reportData.transcript || "";
+      return `
+        <div class="sectionContainer" style="margin:0;margin-bottom:25px">
+          <div class="coachingSpaceSection" style="margin:0">
+            <div class="simpleBanner"><h1>Coaching Space Report for Student</h1></div>
+            <div class="coachingContent">
+              <div class="linearChartsContainer">${items}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
-        // Overall score: avg of openAiScores or avg of scores values
-        let overall = 0;
-        if (
-          Array.isArray(reportData.openAiScores) &&
-          reportData.openAiScores.length
-        ) {
-          overall = Math.round(
-            reportData.openAiScores.reduce((a, b) => a + b, 0) /
-              reportData.openAiScores.length
-          );
-        } else if (reportData.scores) {
-          const vals = Object.values(reportData.scores);
-          overall = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    // --------- Exercises ----------
+    function renderExercises() {
+      const mcq = report.mcqExercises;
+      if (!mcq) return "";
+
+      const renderMarkdown = (md) => {
+        if (typeof marked === "undefined") {
+          return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
         }
-        document.getElementById(
-          "overallScore"
-        ).textContent = `Overall ${overall}`;
-
-        // Donut charts
-        const donutGrid = document.getElementById("donutGrid");
-        donutGrid.innerHTML = "";
-        const scores = reportData.scores || {};
-        const entries = Object.entries(scores);
-        entries.forEach(([key, value], idx) => {
-          const card = document.createElement("div");
-          card.className = "donut-card";
-          const canvasId = `donut_${idx}`;
-          card.innerHTML = `<canvas id="${canvasId}"></canvas><div class="donut-label">${escapeHtml(
-            key.replace(/([A-Z])/g, " $1")
-          )}<br/><strong>${value}%</strong></div>`;
-          donutGrid.appendChild(card);
-          // draw after appended
-          const ctx = document.getElementById(canvasId).getContext("2d");
-          // dataset color based on value mapped to logo palette
-          let color =
-            value >= 70
-              ? "var(--teal)"
-              : value >= 40
-              ? "var(--sun)"
-              : "#ef4444";
-          // fallback convert CSS var:
-          color =
-            getComputedStyle(document.documentElement)
-              .getPropertyValue("--teal")
-              .trim() && value >= 70
-              ? getComputedStyle(document.documentElement)
-                  .getPropertyValue("--teal")
-                  .trim()
-              : value >= 40
-              ? getComputedStyle(document.documentElement)
-                  .getPropertyValue("--sun")
-                  .trim()
-              : "#ef4444";
-
-          new Chart(ctx, {
-            type: "doughnut",
-            data: {
-              datasets: [
-                {
-                  data: [value, Math.max(0, 100 - value)],
-                  backgroundColor: [color, "#eef6fb"],
-                  borderWidth: 0,
-                },
-              ],
-            },
-            options: {
-              cutout: "72%",
-              responsive: false,
-              plugins: {
-                legend: { display: false },
-                tooltip: { enabled: false },
-              },
-            },
-          });
-        });
-
-        // Grammar table
-        const gtbody = document.querySelector("#grammarTable tbody");
-        gtbody.innerHTML = "";
-        (reportData.openAiObservations || []).forEach((obs) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td><code>${escapeHtml(
-            obs.mistake || ""
-          )}</code></td><td><strong>${escapeHtml(
-            obs.correction || ""
-          )}</strong></td><td style="color:var(--muted)">${escapeHtml(
-            obs.explanation || ""
-          )}</td>`;
-          gtbody.appendChild(tr);
-        });
-
-        // Vocabulary table (supports Vocabulary_Booster or Vocabulary_Booster-like keys)
-        const vb =
-          reportData.Vocabulary_Booster ||
-          reportData.vocabularyBooster ||
-          reportData.Vocabulary_Booster ||
-          reportData.Vocabulary_Booster ||
-          reportData.Vocabulary_Booster ||
-          [];
-        const vtbody = document.querySelector("#vocabTable tbody");
-        vtbody.innerHTML = "";
-        (vb || []).forEach((w) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td>${escapeHtml(w.word || "")}</td><td>${escapeHtml(
-            String(w.occurrences || 0)
-          )}</td><td>${escapeHtml((w.suggestions || []).join(", "))}</td>`;
-          vtbody.appendChild(tr);
-        });
-
-        // Pronunciation
-        const pron = document.getElementById("pronunciationArea");
-        pron.innerHTML = "";
-        if (
-          reportData.pronunciationChallenge &&
-          reportData.pronunciationChallenge.trim()
-        ) {
-          pron.textContent = reportData.pronunciationChallenge;
-        } else {
-          pron.textContent = "(no pronunciation notes)";
+        try {
+          return `<div class="pdfExerciseContent markdownContent">${marked.parse(md || "")}</div>`;
+        } catch {
+          return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
         }
+      };
 
-        // Coaching Space: show bar per metric (use scores)
-        const coachingList = document.getElementById("coachingList");
-        coachingList.innerHTML = "";
-        entries.forEach(([k, v]) => {
-          const row = document.createElement("div");
-          row.className = "coach-row";
-          const name = document.createElement("div");
-          name.className = "coach-name";
-          name.textContent = k.replace(/([A-Z])/g, " $1");
-          const barWrap = document.createElement("div");
-          barWrap.className = "coach-bar";
-          const fill = document.createElement("div");
-          fill.className = "coach-fill";
-          // color gradient based on value
-          const base = getColorForValue(v);
-          fill.style.width = v + "%";
-          // simple gradient left->right from base to slightly darkened
-          fill.style.background = `linear-gradient(90deg, ${base}, ${shadeColor(
-            base,
-            -18
-          )})`;
-          barWrap.appendChild(fill);
-          const pill = document.createElement("div");
-          pill.className = "score-pill";
-          pill.textContent = `${v}%`;
-          row.appendChild(name);
-          row.appendChild(barWrap);
-          row.appendChild(pill);
-          coachingList.appendChild(row);
-        });
-        // append coaching textual content if present
-        if (reportData.coachingSpace) {
-          const txt = document.createElement("div");
-          txt.style.marginTop = "10px";
-          txt.style.color = "var(--muted)";
-          txt.innerHTML = escapeHtml(reportData.coachingSpace).replace(
-            /\n/g,
-            "<br/>"
-          );
-          coachingList.appendChild(txt);
-        }
+      // Normalize to the same shape GeneratePDF.jsx expects
+      const list = Array.isArray(mcq)
+        ? mcq
+        : [{ title: "Practice Exercises", markdown: mcq }];
 
-        // Exercises: naive markdown-ish rendering using sections split by '---'
-        const exArea = document.getElementById("exerciseArea");
-        exArea.innerHTML = "";
-        const mcq = reportData.mcqExercises || reportData.exercises || "";
-        if (mcq) {
-          const sections = mcq.split("---");
-          sections.forEach((s) => {
-            const block = document.createElement("div");
-            block.style.marginBottom = "10px";
-            // if starts with '##' or '###' pick heading
-            const lines = s.trim().split("\n");
-            if (lines[0] && lines[0].startsWith("#")) {
-              const h = document.createElement("h3");
-              h.style.margin = "6px 0";
-              h.textContent = lines[0].replace(/^#+\s*/, "");
-              block.appendChild(h);
-              const rest = document.createElement("pre");
-              rest.textContent = lines.slice(1).join("\n");
-              block.appendChild(rest);
-            } else {
-              const pre = document.createElement("pre");
-              pre.textContent = s.trim();
-              block.appendChild(pre);
-            }
-            exArea.appendChild(block);
-          });
-        }
-      }
+      const exercises = list.map((exercise, index) => {
+        const parts = (exercise.markdown || "").split("## CORRECTIONS");
+        const exercisesPart = parts[0];
+        const correctionsPart =
+          parts.length > 1
+            ? `## CORRECTIONS${parts[1]}`
+            : "### No corrections available";
 
-      // small color shade helper (hex or rgb)
-      function shadeColor(hex, percent) {
-        // accept hex like #rrggbb or rgb(...) fallback
-        if (hex.startsWith("rgb")) return hex;
-        const f = parseInt(hex.slice(1), 16),
-          t = percent < 0 ? 0 : 255,
-          p = Math.abs(percent) / 100;
-        const R = f >> 16,
-          G = (f >> 8) & 0x00ff,
-          B = f & 0x0000ff;
-        const newR = Math.round((t - R) * p) + R;
-        const newG = Math.round((t - G) * p) + G;
-        const newB = Math.round((t - B) * p) + B;
-        return `rgb(${newR},${newG},${newB})`;
-      }
+        const displayTitle = exercise.title || `Exercise ${index + 1}`;
+        return { exercisesPart, correctionsPart, displayTitle };
+      });
 
-      // if page loaded with global data, render automatically
-      if (window.reportData) {
-        renderReport(window.reportData);
+      return `
+        <div class="sectionContainer" style="margin:0;margin-bottom:5px">
+          <div class="mcqSection" style="margin:0">
+            <h3 class="mcqTitle" style="margin:0">
+              <div class="simpleBanner"><h1>Practice Exercises</h1></div>
+            </h3>
+            ${exercises
+              .map(
+                (ex) => `
+                  <div class="mcqExercise">
+                    ${
+                      ex.displayTitle !== "Practice Exercises"
+                        ? `<div class="mcqQuestion"><strong>${ex.displayTitle}</strong></div>`
+                        : ""
+                    }
+                    ${renderMarkdown(ex.exercisesPart)}
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </div>
+        <div class="mcqSection" style="margin:0;page-break-before:auto">
+          <h3 class="mcqTitle" style="margin:0">
+            <div class="simpleBanner"><h1>Answer For Exercises</h1></div>
+          </h3>
+          ${exercises
+            .map(
+              (ex) => `
+                <div class="mcqExercise">
+                  ${renderMarkdown(ex.correctionsPart)}
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      `;
+    }
+
+    function renderAll() {
+      try {
+        const scoresHtml = renderScores();
+        const obsHtml = renderObservations();
+        const vocabHtml = renderVocabulary();
+        const pronHtml = renderPronunciation();
+        const coachHtml = renderCoaching();
+        const exHtml = renderExercises();
+
+        if (scoresHtml) document.getElementById("scoresSection").innerHTML = scoresHtml;
+        if (obsHtml) document.getElementById("observationsSection").innerHTML = obsHtml;
+        if (vocabHtml) document.getElementById("vocabSection").innerHTML = vocabHtml;
+        if (pronHtml) document.getElementById("pronunciationSection").innerHTML = pronHtml;
+        if (coachHtml) document.getElementById("coachingSection").innerHTML = coachHtml;
+        if (exHtml) document.getElementById("exercisesSection").innerHTML = exHtml;
+      } catch (e) {
+        console.error("Render error:", e);
+      } finally {
         setTimeout(() => {
-          window._rendered = true;
-        }, 500);
+          try {
+            if (window.Chart) {
+              if (document.getElementById("communicationChart"))
+                renderDonut(
+                  "communicationChart",
+                  Math.round(
+                    ((report.scores?.emotionalTone || 0) +
+                      (report.scores?.collaborativeLanguage || 0) +
+                      (report.scores?.growthMindset || 0)) / 3,
+                  ),
+                );
+              if (document.getElementById("speakingChart"))
+                renderDonut(
+                  "speakingChart",
+                  Math.round(
+                    ((report.openAiScores?.[0] || 0) +
+                      (report.openAiScores?.[1] || 0) +
+                      (report.openAiScores?.[2] || 0)) / 3,
+                  ),
+                );
+            }
+          } finally {
+            window.__PDF_RENDER_DONE__ = true;
+          }
+        }, 300);
       }
-      window.renderReport = renderReport;
-    </script>
-  </body>
+    }
+
+    document.addEventListener("DOMContentLoaded", renderAll);
+  </script>
+</body>
 </html>

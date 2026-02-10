@@ -1,5 +1,10 @@
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
 .fluentifyContainer {
-  padding: 20px;
+  /* padding: 20px; */
   font-family: Arial, sans-serif;
   background: white;
   max-width: 1200px;
@@ -13,7 +18,7 @@
 }
 
 .reportContainer {
-  padding: 20px;
+  /* padding: 20px; */
   background-color: #fff;
   width: 800px;
   margin: auto;
@@ -613,15 +618,15 @@ h4 {
 }
 
 .pdfReport {
-  padding: 20px;
+  /* padding: 20px; */
   background: #ffffff;
-  width: 850px;
+  width: 830px;
   font-family: Arial, sans-serif;
   text-align: justify;
-  padding-left: 50px;
+  /* padding-left: 50px;
   padding-right: 50px;
   padding-bottom: 50px;
-  margin-bottom: 50px;
+  margin-bottom: 50px; */
 }
 
 .pdfReport p {
@@ -2460,277 +2465,6 @@ p {
 
 .mcqExercise {
   margin-bottom: 20px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
-  page-break-inside: avoid;
-}
-
-.mcqQuestion {
-  font-size: 16px;
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background-color: #eef6ff;
-  border-left: 4px solid #0078d4;
-  border-radius: 3px;
-}
-
-.exercise-grammar {
-  background-color: #eef6ff;
-  border-left-color: #0078d4;
-}
-
-.exercise-pronunciation {
-  background-color: #f0f7ed;
-  border-left-color: #107c10;
-}
-
-.exerciseVocabulary {
-  background-color: #fef6ec;
-  border-left-color: #d83b01;
-}
-
-.exerciseLanguage {
-  background-color: #f3eefb;
-  border-left-color: #5c2d91;
-}
-
-.exerciseInstructions {
-  margin: 10px 0;
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 0 15px;
-}
-
-.exerciseQuestions {
-  margin: 15px 0;
-  padding: 0 15px;
-}
-
-.exerciseQuestions ol {
-  padding-left: 25px;
-}
-
-.exerciseQuestions li {
-  margin-bottom: 8px;
-}
-
-.exerciseCorrections {
-  margin: 15px 0;
-  padding: 10px 15px;
-  background-color: #f5f5f5;
-  border-radius: 4px;
-}
-
-.exerciseCorrections ol {
-  padding-left: 25px;
-}
-
-.exerciseExamples {
-  margin: 15px 0;
-  padding: 10px 15px;
-  background-color: #f8f8f8;
-  border-radius: 4px;
-  border-left: 3px solid #ccc;
-}
-
-.exerciseExamples ul {
-  padding-left: 20px;
-  margin-top: 5px;
-}
-
-.markdownContent {
-  padding: 10px;
-  line-height: 1.6;
-}
-
-.markdownSection {
-  margin-bottom: 20px;
-}
-
-.markdownH3 {
-  font-size: 16px;
-  margin: 12px 0 8px;
-  color: #333;
-}
-
-.markdownH4 {
-  font-size: 15px;
-  margin: 10px 0 6px;
-  color: #444;
-}
-
-.markdownSubSection {
-  margin: 10px 0;
-  padding-left: 10px;
-  border-left: 3px solid #eee;
-}
-
-.markdownList {
-  padding-left: 25px;
-  margin: 10px 0;
-}
-
-.markdownListItem {
-  margin: 5px 0;
-}
-
-.markdownParagraph {
-  margin: 8px 0;
-}
-
-.markdownContent {
-  padding: 10px 0;
-  line-height: 1.5;
-  font-size: 14px;
-}
-
-.markdownH2 {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 16px 0 10px;
-  color: #333;
-}
-
-.markdownH3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 14px 0 8px;
-  color: #333;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #eaeaea;
-}
-
-.markdownH4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 12px 0 6px;
-  color: #444;
-}
-
-.markdownParagraph {
-  margin: 8px 0;
-  line-height: 1.5;
-}
-
-.markdownList {
-  margin: 10px 0;
-  padding-left: 25px;
-}
-
-.markdownListItem {
-  margin: 4px 0;
-  line-height: 1.4;
-}
-
-.markdownSubSection {
-  margin: 12px 0;
-  padding-left: 8px;
-  border-left: 3px solid #eaeaea;
-}
-
-.exerciseSection {
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px dashed #eaeaea;
-}
-
-.markdownContent {
-  padding: 10px 0;
-  line-height: 1.5;
-  font-size: 14px;
-}
-
-.markdownH2 {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 16px 0 10px;
-  color: #333;
-}
-
-.markdownH3 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 14px 0 8px;
-  color: #333;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #eaeaea;
-}
-
-.markdownH4 {
-  font-size: 14px;
-  font-weight: 600;
-  margin: 12px 0 6px;
-  color: #444;
-}
-
-.markdownParagraph {
-  margin: 8px 0;
-  line-height: 1.5;
-}
-
-.markdownList {
-  margin: 10px 0;
-  padding-left: 25px;
-}
-
-.markdownListItem {
-  margin: 4px 0;
-  line-height: 1.4;
-}
-
-.markdownSubSection {
-  margin: 12px 0;
-  padding-left: 8px;
-  border-left: 3px solid #eaeaea;
-}
-
-.exerciseSection {
-  margin-bottom: 20px;
-  padding-bottom: 10px;
-  border-bottom: 1px dashed #eaeaea;
-}
-
-.observationsTable {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: -10px;
-  /* Adjust this to bring the table closer to the banner */
-  margin-bottom: 2px;
-  font-size: 12px;
-  page-break-inside: auto;
-  th,
-  td {
-    border: 1px solid #d1d1d1;
-    padding: 8px;
-    text-align: left;
-    vertical-align: top;
-  }
-  th {
-    background-color: #428bca;
-    color: white;
-    font-weight: bold;
-  }
-  tr:nth-child(even) {
-    background-color: #f0f0f0;
-  }
-  td {
-    word-wrap: break-word;
-    max-width: 200px;
-  }
-}
-
-.pdfMarkdown {
-  font-family: Arial, sans-serif;
-  line-height: 1.5;
-  .exerciseLine {
-    margin: 5px 0;
-  }
-}
-
-.mcqExercise {
-  margin-top: -10px;
-  /* Adjust this to bring content closer to the banner */
-  margin-bottom: 20px;
   padding: 10px;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
@@ -2928,55 +2662,6 @@ p {
   .banner-inner p {
     font-size: 16px;
   }
-}
-
-.pdfWavyBanner {
-  position: relative;
-  width: 100%;
-  margin-bottom: 30px;
-  padding-top: 60px;
-  padding-bottom: 40px;
-  text-align: center;
-  overflow: hidden;
-  background-color: #8a84d6;
-  border-radius: 12px;
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 100%;
-    height: 20px;
-    background-color: white;
-    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
-  }
-  h2,
-  h3,
-  h1 {
-    margin: 0;
-    font-size: 24px;
-    color: white;
-    font-weight: bold;
-    position: relative;
-    z-index: 2;
-  }
-}
-
-.pdfWavyBannerBlue {
-  background-color: #559fd0;
-}
-
-.pdfWavyBannerGold {
-  background-color: #ffd700;
-  h2,
-  h3,
-  h1 {
-    color: #333;
-  }
-}
-
-.pdfWavyBannerGreen {
-  background-color: #06b900;
 }
 
 .pdfWavyBanner {
@@ -3275,4 +2960,234 @@ p {
   justify-content: center;
   align-items: center;
   margin-top: 20px;
+}
+
+.simpleBanner {
+  width: 100%;
+  max-width: 800px;
+  border-radius: 8px;
+  background-color: #8A84D6;
+  padding: 15px 15px;
+  text-align: center;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+.simpleBanner h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: bold;
+  color: #FFFFFF;
+}
+
+.pronunciationChallengeSection { margin-bottom: 30px; }
+.challengeInstructions { text-align: left; margin: 15px 0 20px 0; padding-left: 5px; }
+.challengeWordsContainer { margin-top: 20px; }
+.wordsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+.challengeWord {
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 12px 16px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 16px;
+  color: #2d3748;
+}
+
+.coachingSpaceSection { margin-bottom: 30px; }
+.coachingContent { margin-top: 20px; }
+
+/* Linear scale coaching */
+.linearChartsContainer { display: flex; flex-direction: column; gap: 2rem; margin-top: 20px; }
+.linearChartItem {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px 20px;
+  border-left: 5px solid #6c63ff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  page-break-inside: avoid;
+}
+.chartHeader { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.chartLabel { font-size: 16px; font-weight: 600; color: #2d3748; white-space: nowrap; }
+.scoreTrack {
+  flex-grow: 1;
+  height: 10px;
+  background: linear-gradient(to right, #48bb78, #f6e05e, #f56565);
+  border-radius: 5px;
+  position: relative;
+  min-width: 100px;
+}
+.scoreIndicator {
+  position: absolute;
+  top: -5px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 12px solid #4a5568;
+}
+.feedbackContainer {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+.analysisText, .coachingTip {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4a5568;
+  margin: 0 0 1rem 0;
+}
+.analysisText strong, .coachingTip strong { color: #2d3748; font-weight: 600; }
+
+.recommendationsSection {
+  margin-top: 1.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #c5cde2;
+}
+.recommendationsTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2d3748;
+  margin: 0 0 0.5rem 0;
+}
+
+/* Markdown styling */
+.markdownH1 { font-size: 1.8em; font-weight: bold; color: #2d3748; margin: 1em 0 0.8em; text-align: center; }
+.markdownH2 { font-size: 1.3em; font-weight: bold; color: #2d3748; margin: 1.2em 0 0.6em; padding: 8px 16px; background: #f7f9fc; border-left: 4px solid #8a84d6; border-radius: 4px; }
+.markdownH3 { font-size: 16px; font-weight: 600; margin: 14px 0 8px; color: #333; padding-bottom: 4px; border-bottom: 1px solid #eaeaea; }
+.markdownH4 { font-size: 14px; font-weight: 600; margin: 12px 0 6px; color: #444; }
+.markdownParagraph { margin: 0.8em 0; line-height: 1.6; color: #4a5568; }
+.markdownOrderedList, .markdownList { margin: 1em 0; padding-left: 1.5em; }
+.markdownListItem { margin: 0.5em 0; line-height: 1.5; }
+.markdownHr { border: none; border-top: 2px solid #e2e8f0; margin: 2em 0; }
+/* ...existing code... */
+
+/* Header border to match GeneratePDF.jsx */
+.reportHeader {
+  border-bottom: 2px solid #eaeaea;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+/* Ensure tables render properly (SCSS nesting is ignored in plain CSS) */
+.observationsTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: -10px;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+.observationsTable th,
+.observationsTable td {
+  border: 1px solid #d1d1d1;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.observationsTable th {
+  background-color: #c8c6ec;
+  color: #1D252C;
+  font-weight: bold;
+}
+.observationsTable td {
+  word-wrap: break-word;
+  max-width: 200px;
+}
+
+/* Markdown list spacing/padding (fix list layout) */
+.markdownContent ul,
+.markdownContent ol {
+  margin: 10px 0;
+  padding-left: 25px;
+}
+.markdownContent li {
+  margin: 4px 0;
+  line-height: 1.4;
+}
+.markdownParagraph {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+
+/* Exercise question styling (match GeneratePDF.jsx) */
+.mcqQuestion {
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding: 5px 10px;
+  background-color: #eef6ff;
+  border-left: 4px solid #0078d4;
+  border-radius: 3px;
+  font-size: 16px;
+  color: #000000;
+}
+
+/* Exercise sections: match GeneratePDF look */
+.mcqSection {
+  margin-top: 10px;
+  padding-top: 1px;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.mcqTitle {
+  margin-top: 25px;
+}
+
+.mcqExercise {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d7e7f7;
+  border-left: 4px solid #2f80ed;
+  border-radius: 6px;
+  background: #eef6ff;
+  page-break-inside: avoid;
+}
+
+/* Exercise title row */
+.mcqQuestion {
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background-color: transparent;
+  border-left: none;
+  border-radius: 0;
+  font-size: 13.5px;
+  color: #1f2d3d;
+}
+
+/* Markdown text spacing */
+.pdfExerciseContent {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #1f2d3d;
+}
+
+/* H3 inside exercise body (if any) */
+.pdfExerciseContent .markdownH3,
+.pdfExerciseContent h3 {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin: 10px 0 6px;
+  padding: 0;
+  border: 0;
+  color: #1f2d3d;
+}
+
+/* Lists */
+.pdfExerciseContent ul,
+.pdfExerciseContent ol {
+  margin: 6px 0 8px;
+  padding-left: 18px;
+}
+
+.pdfExerciseContent li {
+  margin: 3px 0;
 }

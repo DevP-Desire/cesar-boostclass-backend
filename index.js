@@ -32,6 +32,13 @@ import nodemailer from "nodemailer";
 import multer from "multer";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { defaultSystemPromts } from "./controllers/custom_prompt.js";
+import { QueueClient } from "@azure/storage-queue";
+import { generateReportPdf } from "./controllers/generatePdf.js";
+
+const queueClient = new QueueClient(
+  process.env.AZURE_BLOB_CONNECTION_STRING,
+  process.env.AZURE_QUEUE_NAME,
+);
 
 const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET;
 
@@ -45,6 +52,19 @@ app.use("/api/getZoomRecording", bodyParser.raw({ type: "*/*" }));
 app.get("/api/getZoomRecording", (req, res) => {
   res.send("Zoom webhook endpoint is running");
 });
+
+// Resolve org by host email
+async function getOrganizationByHostEmail(hostEmail) {
+  if (!hostEmail) return "unknown_org";
+  const safeEmail = hostEmail.toLowerCase().replace(/'/g, "''");
+  const entities = tableClient.listEntities({
+    queryOptions: { filter: `email eq '${safeEmail}'` },
+  });
+  for await (const entity of entities) {
+    return entity.organization || "unknown_org";
+  }
+  return "unknown_org";
+}
 
 // zoom webhook callback
 app.post("/api/getZoomRecording", async (req, res) => {
@@ -82,25 +102,84 @@ app.post("/api/getZoomRecording", async (req, res) => {
     });
   }
 
-  // 🎯 Recording transcript completed event
+  // // 🎯 Recording transcript completed event
+  // if (body.event === "recording.transcript_completed") {
+  //   const meeting = body.payload.object;
+
+  //   console.log("✅ Recording ready!");
+  //   console.log("body:", JSON.stringify(body, null, 2));
+  //   console.log("data:", JSON.stringify(body.payload, null, 2));
+  //   console.log("object data:", JSON.stringify(meeting, null, 2));
+  //   console.log("Meeting ID:", meeting.id);
+  //   console.log("Topic:", meeting.topic);
+
+  //   meeting.recording_files.forEach((file) => {
+  //     console.log("File:", file.file_type, file.download_url);
+  //   });
+
+  //   // 👉 TODO:
+  //   // - Save metadata to DB
+  //   // - Download files async
+  //   // - Trigger background job
+  // }
+
   if (body.event === "recording.transcript_completed") {
-    const meeting = body.payload.object;
+    // respond immediately (Zoom expects fast response)
+    res.sendStatus(200);
 
-    console.log("✅ Recording ready!");
-    console.log("body:", JSON.stringify(body, null, 2));
-    console.log("data:", JSON.stringify(body.payload, null, 2));
-    console.log("object data:", JSON.stringify(meeting, null, 2));
-    console.log("Meeting ID:", meeting.id);
-    console.log("Topic:", meeting.topic);
+    (async () => {
+      try {
+        const meeting = body.payload.object;
+        const organization = await getOrganizationByHostEmail(
+          meeting.host_email,
+        );
 
-    meeting.recording_files.forEach((file) => {
-      console.log("File:", file.file_type, file.download_url);
-    });
+        // Fetch org entity to check autoReportEnabled
+        let orgEntity;
+        try {
+          orgEntity = await tableTokens.getEntity("token", organization);
+        } catch {
+          orgEntity = {};
+        }
+        // Only proceed if autoReportEnabled is true
+        if (!orgEntity.autoReportEnabled) {
+          console.log(`Auto-report disabled for org: ${organization}`);
+          return; // Do NOT enqueue job
+        }
 
-    // 👉 TODO:
-    // - Save metadata to DB
-    // - Download files async
-    // - Trigger background job
+        const files = meeting.recording_files || [];
+        for (const file of files) {
+          const isVtt =
+            (file.file_type || "").toLowerCase() === "transcript" ||
+            (file.file_extension || "").toLowerCase() === "vtt" ||
+            (file.recording_type || "").toLowerCase() === "audio_transcript";
+
+          if (!isVtt || !file.download_url) continue;
+
+          const job = {
+            meetingId: meeting.id,
+            transcriptId: file.id,
+            transcriptUrl: file.download_url,
+            hostEmail: meeting.host_email || "",
+            organization,
+            download_token: body.download_token || "",
+            meetingName: meeting.topic || "",
+            meetingTime: meeting.start_time || file.recording_start || Date.now(),
+            meetingDuration: meeting.duration || 0,
+            // receivedAt: Date.now(),
+          };
+
+          const msg = Buffer.from(JSON.stringify(job)).toString("base64");
+          await queueClient.sendMessage(msg);
+        }
+
+        console.log("✅ Transcript jobs enqueued");
+      } catch (err) {
+        console.error("Queue enqueue error:", err);
+      }
+    })();
+
+    return;
   }
 
   res.sendStatus(200);
@@ -110,7 +189,7 @@ app.use(
   cors({
     origin: process.env.FRONTEND_URL,
     credentials: true,
-  })
+  }),
 );
 // app.use(express.json());
 app.use(express.json({ limit: "100mb" }));
@@ -142,8 +221,8 @@ const tableClient = new TableClient(
   "Users",
   new AzureNamedKeyCredential(
     process.env.AZURE_STORAGE_ACCOUNT,
-    process.env.AZURE_STORAGE_KEY
-  )
+    process.env.AZURE_STORAGE_KEY,
+  ),
 );
 
 const tableTokens = new TableClient(
@@ -151,15 +230,15 @@ const tableTokens = new TableClient(
   "Tokens",
   new AzureNamedKeyCredential(
     process.env.AZURE_STORAGE_ACCOUNT,
-    process.env.AZURE_STORAGE_KEY
-  )
+    process.env.AZURE_STORAGE_KEY,
+  ),
 );
 
 const blobServiceClient = BlobServiceClient.fromConnectionString(
-  process.env.AZURE_BLOB_CONNECTION_STRING
+  process.env.AZURE_BLOB_CONNECTION_STRING,
 );
 const containerClient = blobServiceClient.getContainerClient(
-  process.env.AZURE_CONTAINER_NAME
+  process.env.AZURE_CONTAINER_NAME,
 );
 
 let zoomRecordingsCache = {};
@@ -171,7 +250,16 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes cache
 const JWT_SECRET = process.env.JWT_SECRET;
 
 app.post("/api/register", async (req, res) => {
-  const { name, role, email, password, organization, orgImg, zoomUsername, teamsUsername } = req.body;
+  const {
+    name,
+    role,
+    email,
+    password,
+    organization,
+    orgImg,
+    zoomUsername,
+    teamsUsername,
+  } = req.body;
   if (!name || !role || !email || !password || !organization)
     return res.status(400).send("Missing fields");
   try {
@@ -379,7 +467,7 @@ app.post("/api/refreshConnections", async (req, res) => {
         connections: data,
       },
       "Merge",
-      { etag: user.etag ?? "*" }
+      { etag: user.etag ?? "*" },
     );
     res.status(200).json({
       role: user.role,
@@ -484,7 +572,8 @@ app.delete("/api/users/delete", async (req, res) => {
 
 app.put("/api/users/update", async (req, res) => {
   try {
-    const { email, name, role, password, zoomUsername, teamsUsername } = req.body;
+    const { email, name, role, password, zoomUsername, teamsUsername } =
+      req.body;
 
     if (!email) return res.status(400).send("Missing email");
 
@@ -514,7 +603,9 @@ app.put("/api/users/update", async (req, res) => {
       if (!newTrim) return;
 
       // Prefer limiting the scan to the same organization to reduce load
-      const orgFilter = (user.organization || "").toString().replace(/'/g, "''");
+      const orgFilter = (user.organization || "")
+        .toString()
+        .replace(/'/g, "''");
 
       const listOptions = orgFilter
         ? { queryOptions: { filter: `organization eq '${orgFilter}'` } }
@@ -534,10 +625,13 @@ app.put("/api/users/update", async (req, res) => {
                 [fieldName]: "",
               },
               "Merge",
-              { etag: other.etag ?? "*" }
+              { etag: other.etag ?? "*" },
             );
           } catch (e) {
-            console.warn(`Failed to clear ${fieldName} for ${otherEmail}:`, e.message || e);
+            console.warn(
+              `Failed to clear ${fieldName} for ${otherEmail}:`,
+              e.message || e,
+            );
           }
         }
       }
@@ -602,7 +696,7 @@ app.get("/api/user/:email", oboToken, async (req, res) => {
         headers: {
           Authorization: `Bearer ${req.graphToken}`,
         },
-      }
+      },
     );
 
     const userInfo = await user.json();
@@ -658,7 +752,7 @@ app.get("/api/recordings", oboToken, async (req, res) => {
 
       if (!response.ok) {
         throw new Error(
-          `Graph API error: ${response.status} ${response.statusText}`
+          `Graph API error: ${response.status} ${response.statusText}`,
         );
       }
 
@@ -672,7 +766,7 @@ app.get("/api/recordings", oboToken, async (req, res) => {
     }
 
     const filteredEvents = events?.filter(
-      (event) => event.isOnlineMeeting === true
+      (event) => event.isOnlineMeeting === true,
     );
 
     if (!filteredEvents || filteredEvents.length === 0) {
@@ -680,7 +774,7 @@ app.get("/api/recordings", oboToken, async (req, res) => {
     }
 
     const meetingJoinUrls = filteredEvents?.map(
-      (event) => event.onlineMeeting.joinUrl
+      (event) => event.onlineMeeting.joinUrl,
     );
 
     const allMeetings = (
@@ -691,11 +785,11 @@ app.get("/api/recordings", oboToken, async (req, res) => {
             `https://graph.microsoft.com/v1.0/me/onlineMeetings?$filter=JoinWebUrl eq '${url}'`,
             {
               headers: { Authorization: `Bearer ${req.graphToken}` },
-            }
+            },
           );
           const data = await res.json();
           return data.value?.[0];
-        })
+        }),
       )
     ).filter(Boolean);
 
@@ -704,7 +798,7 @@ app.get("/api/recordings", oboToken, async (req, res) => {
       const transcriptPromises = allMeetings.map(async (meeting) => {
         const res = await fetch(
           `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meeting.id}/transcripts`,
-          { headers: { Authorization: `Bearer ${req.graphToken}` } }
+          { headers: { Authorization: `Bearer ${req.graphToken}` } },
         );
 
         const transcriptData = await res.json();
@@ -760,7 +854,7 @@ app.post("/api/teamsrecordingdata", oboToken, async (req, res) => {
 
   const response = await fetch(
     `https://graph.microsoft.com/v1.0/me/onlineMeetings/${recording.id}/transcripts/${recording.recordingId}/content?$format=text/vtt`,
-    { headers: { Authorization: `Bearer ${req.graphToken}` } }
+    { headers: { Authorization: `Bearer ${req.graphToken}` } },
   );
   const text = await response.text();
   transcriptList.transcript = {
@@ -862,7 +956,7 @@ app.post("/api/refreshToken", async (req, res) => {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Authorization: `Basic ${Buffer.from(
-            `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+            `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`,
           ).toString("base64")}`,
         },
         body: new URLSearchParams({
@@ -886,7 +980,7 @@ app.post("/api/refreshToken", async (req, res) => {
           accessToken: newTokens.access_token,
           refreshToken: newTokens.refresh_token,
         },
-        "Merge"
+        "Merge",
       );
 
       return res.json({ success: true });
@@ -909,7 +1003,7 @@ app.post("/auth/zoom/callback", async (req, res) => {
       Authorization:
         "Basic " +
         Buffer.from(
-          `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+          `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`,
         ).toString("base64"),
       "Content-Type": "application/x-www-form-urlencoded",
     },
@@ -951,7 +1045,7 @@ app.post("/auth/zoom/callback", async (req, res) => {
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token,
     },
-    "Merge"
+    "Merge",
   );
 
   res.json({ scope: tokens.scope, userInfo: userInfo });
@@ -1037,7 +1131,7 @@ app.get("/api/zoom/recordings", async (req, res) => {
         headers: {
           Authorization: `Bearer ${userEntity.accessToken}`,
         },
-      }
+      },
     );
 
     if (!response.ok) throw new Error("Failed to fetch Zoom meetings");
@@ -1149,7 +1243,7 @@ app.post("/api/zoom/recordingdata", async (req, res) => {
         } catch (error) {
           console.log("Error downloading file:", error);
         }
-      }
+      },
     );
     await Promise.all(downloadPromises);
 
@@ -1256,7 +1350,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
         id,
         existingAssessment.data || {},
         organization,
-        "pending"
+        "pending",
       );
     } else {
       // New assessment: create with empty data and pending status
@@ -1266,7 +1360,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
         id,
         {},
         organization,
-        "pending"
+        "pending",
       );
     }
     io.emit("assessmentStatus", {
@@ -1284,7 +1378,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       results.openAiObservations = await analyzeTextWithOpenAI(
         text,
         cefrLevel,
-        orgPrompts
+        orgPrompts,
       );
     } catch (error) {
       console.log("Error in OpenAI analysis:", error);
@@ -1298,7 +1392,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
     try {
       const scores = await analyzeContentOpenAI(text, cefrLevel, orgPrompts);
       results.openAiScores = scores.map((n) =>
-        Math.max(0, Math.min(100, Math.round(n)))
+        Math.max(0, Math.min(100, Math.round(n))),
       );
     } catch (err) {
       console.log("Error in OpenAI scoring:", err);
@@ -1312,7 +1406,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
     try {
       results.pronunciationChallenge = await generatePronunciationChallenge(
         text,
-        orgPrompts
+        orgPrompts,
       );
     } catch (error) {
       console.log("Error in pronunciation challenge:", error);
@@ -1328,7 +1422,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       results.coachingSpace = await generateCoachingSpace(
         text,
         studentDisplayName,
-        orgPrompts
+        orgPrompts,
       );
 
       const coachingKPIs = parseCoachingSpaceMarkdown(results.coachingSpace);
@@ -1364,7 +1458,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
         text,
         results.openAiObservations,
         cefrLevel,
-        orgPrompts
+        orgPrompts,
       );
     } catch (error) {
       console.log("Error in MCQ generation:", error);
@@ -1377,7 +1471,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
   const speakerAssessment = {
     speakerEmail: id,
     speakerName: name,
-    transcript: text,
+    // transcript: text,
     scores: results.scores,
     openAiObservations: results.openAiObservations,
     openAiScores: results.openAiScores,
@@ -1396,7 +1490,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       id,
       speakerAssessment,
       organization,
-      "completed"
+      "completed",
     );
     io.emit("assessmentStatus", {
       meetingId,
@@ -1405,6 +1499,24 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       status: "completed",
     });
     // console.log("Saved assessment to table for ", id);
+    try {
+      let entity;
+      try {
+        entity = await tableTokens.getEntity("token", organization);
+      } catch {
+        entity = { partitionKey: "token", rowKey: organization, value: 0 };
+      }
+      const current = parseInt(entity.value || 0);
+      if (current <= 0)
+        return res.status(400).json({ error: "No tokens left" });
+      const newTotal = current - 1;
+      await tableTokens.upsertEntity(
+        { partitionKey: "token", rowKey: organization, value: newTotal },
+        "Merge",
+      );
+    } catch (err) {
+      res.status(500).send("Failed to deduct token");
+    }
   } catch (err) {
     await upsertAssessment(
       meetingId,
@@ -1412,7 +1524,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       id,
       {},
       organization,
-      "completed"
+      "completed",
     );
     io.emit("assessmentStatus", {
       meetingId,
@@ -1514,14 +1626,22 @@ app.post("/api/sendWelcomeMail", async (req, res) => {
   }
 });
 
-app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
-  const { email, meeting, transcriptId, reportData } = req.body;
-  const pdfFile = req.file; // contains uploaded PDF
+app.post("/api/sendAssessmentMail", async (req, res) => {
+  const { email, meeting, transcript, reportData, organization, orgLogo } = req.body;
+  // const pdfFile = req.file; // contains uploaded PDF
 
-  if (!email || !pdfFile)
+  if (!email || !reportData)
     return res.status(400).send("Missing parameters or PDF");
 
   try {
+    const pdfBuffer = await generateReportPdf({
+      reportData: reportData,
+      meeting: meeting,
+      transcript: transcript,
+      organization,
+      orgLogo,
+    });
+
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com",
       port: 587,
@@ -1539,17 +1659,17 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
       html: `
         <p>Hello,</p>
         <p>Your assessment report for meeting <b>${
-          JSON.parse(meeting).subject || ""
+          meeting.subject || ""
         }</b> is ready.</p>
-        <p>Recording Id: ${transcriptId}</p>
+        <p>Recording Id: ${transcript.id}</p>
         <p>Regards,<br/>BoostClass AI</p>
       `,
       attachments: [
         {
           filename: `Assessment_Report_${
-            JSON.parse(reportData).speakerName || "report"
+            reportData.speakerName || "report"
           }.pdf`,
-          content: pdfFile.buffer,
+          content: pdfBuffer,
           contentType: "application/pdf",
         },
       ],
@@ -1572,6 +1692,7 @@ app.get("/api/organizations", async (req, res) => {
           name: entity.rowKey,
           imageUrl: entity.imageUrl || "",
           report: entity.value || "",
+          autoReportEnabled: entity.autoReportEnabled === true, // default false
         });
       }
     }
@@ -1614,9 +1735,16 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
         rowKey: organization,
         imageUrl: imageUrl,
         value: 0,
+        autoReportEnabled: false,
+        // Notification defaults
+        notificationEnabled: false,
+        notificationSubject:
+          "Unmapped Students - BoostClass Report Not Generated",
+        notificationMessage: "<p>Unmapped user list:</p>",
+        notificationSignatureHtml: "",
         ...defaultSystemPromts,
       },
-      "Merge"
+      "Merge",
     );
 
     if (imageUrl) {
@@ -1631,13 +1759,93 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
             orgImg: imageUrl,
           },
           "Merge",
-          { etag: user.etag ?? "*" }
+          { etag: user.etag ?? "*" },
         );
       }
     }
     res.json({ success: true, imageUrl });
   } catch (err) {
     res.status(500).send("Failed to add organization");
+  }
+});
+
+app.get("/api/organizations/:org/notifications", async (req, res) => {
+  const org = req.params.org;
+  if (!org) return res.status(400).send("Missing organization name");
+
+  try {
+    const entity = await tableTokens.getEntity("token", org);
+
+    res.json({
+      enabled: entity.notificationEnabled === true,
+      subject:
+        entity.notificationSubject ||
+        "Unmapped Students - BoostClass Report Not Generated",
+      message: entity.notificationMessage || "<p>Unmapped user list:</p>",
+      signatureHtml: entity.notificationSignatureHtml || "",
+    });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).send("Organization not found");
+    }
+    res.status(500).send("Failed to fetch notifications");
+  }
+});
+
+app.put(
+  "/api/organizations/:org/notifications",
+  upload.single("signature"),
+  async (req, res) => {
+    const org = req.params.org;
+    if (!org) return res.status(400).send("Missing organization name");
+
+    try {
+      const enabled = req.body.enabled === "true";
+      const subject = req.body.subject || "";
+      const message = req.body.message || "";
+
+      let signatureHtml = "";
+
+      if (req.file) {
+        // store html content directly in table
+        signatureHtml = req.file.buffer.toString("utf-8");
+      }
+
+      const updateEntity = {
+        partitionKey: "token",
+        rowKey: org,
+        notificationEnabled: enabled,
+        notificationSubject: subject,
+        notificationMessage: message,
+      };
+
+      if (signatureHtml) updateEntity.notificationSignatureHtml = signatureHtml;
+
+      await tableTokens.upsertEntity(updateEntity, "Merge");
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).send("Failed to update notifications");
+    }
+  },
+);
+
+app.put("/api/organizations/:org/notifications/toggle", async (req, res) => {
+  const org = req.params.org;
+  const { enabled } = req.body;
+  if (typeof enabled === "undefined") return res.status(400).send("Missing enabled value");
+
+  try {
+    await tableTokens.upsertEntity(
+      {
+        partitionKey: "token",
+        rowKey: org,
+        notificationEnabled: !!enabled,
+      },
+      "Merge"
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).send("Failed to update notification toggle");
   }
 });
 
@@ -1673,7 +1881,7 @@ app.post("/api/orgImg", upload.single("image"), async (req, res) => {
         rowKey: organization,
         imageUrl: imageUrl,
       },
-      "Merge"
+      "Merge",
     );
 
     if (imageUrl) {
@@ -1688,7 +1896,7 @@ app.post("/api/orgImg", upload.single("image"), async (req, res) => {
             orgImg: imageUrl,
           },
           "Merge",
-          { etag: user.etag ?? "*" }
+          { etag: user.etag ?? "*" },
         );
       }
     }
@@ -1767,6 +1975,27 @@ app.put("/api/organizations/:org/prompts", async (req, res) => {
   }
 });
 
+// Update auto-report toggle
+app.put("/api/organizations/:org/auto-report", async (req, res) => {
+  const org = req.params.org;
+  const { autoReportEnabled } = req.body;
+  if (typeof autoReportEnabled !== "boolean")
+    return res.status(400).send("Missing or invalid value");
+  try {
+    await tableTokens.upsertEntity(
+      {
+        partitionKey: "token",
+        rowKey: org,
+        autoReportEnabled,
+      },
+      "Merge",
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).send("Failed to update auto-report setting");
+  }
+});
+
 app.get("/api/tokens/total", async (req, res) => {
   const { org } = req.query;
   if (!org) {
@@ -1798,7 +2027,7 @@ app.post("/api/tokens/add", async (req, res) => {
     const newTotal = parseInt(entity.value || 0) + parseInt(token);
     await tableTokens.upsertEntity(
       { partitionKey: "token", rowKey: rowKey, value: newTotal },
-      "Merge"
+      "Merge",
     );
     res.json({ success: true, totalTokens: newTotal });
   } catch (err) {
@@ -1823,7 +2052,7 @@ app.post("/api/tokens/deduct", async (req, res) => {
     const newTotal = current - 1;
     await tableTokens.upsertEntity(
       { partitionKey: "token", rowKey: organization, value: newTotal },
-      "Merge"
+      "Merge",
     );
     res.json({ success: true, totalTokens: newTotal });
   } catch (err) {
@@ -1853,7 +2082,7 @@ app.put("/api/users/toggle-orgadmin", async (req, res) => {
         orgAdminEnabled: isActive,
       },
       "Merge",
-      { etag: user.etag ?? "*" }
+      { etag: user.etag ?? "*" },
     );
     res.json({ success: true, email, orgAdminEnabled: isActive });
   } catch (err) {
@@ -1862,7 +2091,7 @@ app.put("/api/users/toggle-orgadmin", async (req, res) => {
 });
 
 app.post("/api/generateDashboardSummary", async (req, res) => {
-  const { report, selectedUser, fromDate, toDate } = req.body;
+  const { report, selectedUser, fromDate, toDate, organization } = req.body;
   if (!report || !selectedUser)
     return res.status(400).send("Missing report or user");
 
@@ -1871,8 +2100,27 @@ app.post("/api/generateDashboardSummary", async (req, res) => {
       report,
       selectedUser,
       fromDate,
-      toDate
+      toDate,
     );
+
+    try {
+      let entity;
+      try {
+        entity = await tableTokens.getEntity("token", organization);
+      } catch {
+        entity = { partitionKey: "token", rowKey: organization, value: 0 };
+      }
+      const current = parseInt(entity.value || 0);
+      if (current <= 0)
+        return res.status(400).json({ error: "No tokens left" });
+      const newTotal = current - 1;
+      await tableTokens.upsertEntity(
+        { partitionKey: "token", rowKey: organization, value: newTotal },
+        "Merge",
+      );
+    } catch (err) {
+      res.status(500).send("Failed to deduct token");
+    }
 
     res.status(200).json(response);
   } catch (err) {
@@ -1882,5 +2130,5 @@ app.post("/api/generateDashboardSummary", async (req, res) => {
 });
 
 server.listen(process.env.PORT, () =>
-  console.log(`🚀 Backend listening on ${process.env.PORT}`)
+  console.log(`🚀 Backend listening on ${process.env.PORT}`),
 );
