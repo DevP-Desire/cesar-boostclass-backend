@@ -16,6 +16,7 @@
     "@azure/msal-node": "^2.7.0",
     "@azure/storage-blob": "^12.29.1",
     "@azure/storage-queue": "^12.29.0",
+    "@sparticuz/chromium": "^143.0.4",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
@@ -28,7 +29,7 @@
     "node-fetch": "^2.6.1",
     "nodemailer": "^7.0.9",
     "openai": "latest",
-    "puppeteer": "^24.22.0",
+    "puppeteer-core": "^24.37.3",
     "socket.io": "^4.8.1",
     "uuid": "^13.0.0"
   },
