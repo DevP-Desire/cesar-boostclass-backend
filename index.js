@@ -33,7 +33,7 @@ import multer from "multer";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { defaultSystemPromts } from "./controllers/custom_prompt.js";
 import { QueueClient } from "@azure/storage-queue";
-import { generateReportPdf } from "./controllers/generatePdf.js";
+// import { generateReportPdf } from "./controllers/generatePdf.js";
 
 const queueClient = new QueueClient(
   process.env.AZURE_BLOB_CONNECTION_STRING,
@@ -1626,22 +1626,15 @@ app.post("/api/sendWelcomeMail", async (req, res) => {
   }
 });
 
-app.post("/api/sendAssessmentMail", async (req, res) => {
-  const { email, meeting, transcript, reportData, organization, orgLogo } = req.body;
-  // const pdfFile = req.file; // contains uploaded PDF
+app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
+  const { email, meeting, transcriptId, reportData } = req.body;
 
-  if (!email || !reportData)
+  const pdfFile = req.file; // contains uploaded PDF
+
+  if (!email || !pdfFile)
     return res.status(400).send("Missing parameters or PDF");
 
   try {
-    const pdfBuffer = await generateReportPdf({
-      reportData: reportData,
-      meeting: meeting,
-      transcript: transcript,
-      organization,
-      orgLogo,
-    });
-
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com",
       port: 587,
@@ -1659,17 +1652,17 @@ app.post("/api/sendAssessmentMail", async (req, res) => {
       html: `
         <p>Hello,</p>
         <p>Your assessment report for meeting <b>${
-          meeting.subject || ""
+          JSON.parse(meeting).subject || ""
         }</b> is ready.</p>
-        <p>Recording Id: ${transcript.id}</p>
+        <p>Recording Id: ${transcriptId}</p>
         <p>Regards,<br/>BoostClass AI</p>
       `,
       attachments: [
         {
           filename: `Assessment_Report_${
-            reportData.speakerName || "report"
+            JSON.parse(reportData).speakerName || "report"
           }.pdf`,
-          content: pdfBuffer,
+          content: pdfFile.buffer,
           contentType: "application/pdf",
         },
       ],
@@ -1681,6 +1674,61 @@ app.post("/api/sendAssessmentMail", async (req, res) => {
     res.status(500).send("Failed to send mail");
   }
 });
+// app.post("/api/sendAssessmentMail", async (req, res) => {
+//   const { email, meeting, transcript, reportData, organization, orgLogo } = req.body;
+//   // const pdfFile = req.file; // contains uploaded PDF
+
+//   if (!email || !reportData)
+//     return res.status(400).send("Missing parameters or PDF");
+
+//   try {
+//     const pdfBuffer = await generateReportPdf({
+//       reportData: reportData,
+//       meeting: meeting,
+//       transcript: transcript,
+//       organization,
+//       orgLogo,
+//     });
+
+//     const transporter = nodemailer.createTransport({
+//       host: "smtp.office365.com",
+//       port: 587,
+//       secure: false,
+//       auth: {
+//         user: process.env.OUTLOOK_EMAIL,
+//         pass: process.env.OUTLOOK_PASSWORD,
+//       },
+//     });
+
+//     await transporter.sendMail({
+//       from: '"BoostClass" <Info@go-teach.ai>',
+//       to: email,
+//       subject: "Your Assessment Report is Ready",
+//       html: `
+//         <p>Hello,</p>
+//         <p>Your assessment report for meeting <b>${
+//           meeting.subject || ""
+//         }</b> is ready.</p>
+//         <p>Recording Id: ${transcript.id}</p>
+//         <p>Regards,<br/>BoostClass AI</p>
+//       `,
+//       attachments: [
+//         {
+//           filename: `Assessment_Report_${
+//             reportData.speakerName || "report"
+//           }.pdf`,
+//           content: pdfBuffer,
+//           contentType: "application/pdf",
+//         },
+//       ],
+//     });
+
+//     res.status(200).send("Mail sent");
+//   } catch (err) {
+//     console.error("Mail error:", err);
+//     res.status(500).send("Failed to send mail");
+//   }
+// });
 
 app.get("/api/organizations", async (req, res) => {
   try {
