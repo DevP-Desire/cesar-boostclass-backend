@@ -1,9 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-// import puppeteer from "puppeteer";
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
+import puppeteer from "puppeteer";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,17 +40,10 @@ export async function generateReportPdf({
     `<style>${styles}</style>`,
   );
 
-  // const browser = await puppeteer.launch({
-  //   headless: "new",
-  //   args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  // });
-
   const browser = await puppeteer.launch({
-  args: chromium.args,
-  defaultViewport: chromium.defaultViewport,
-  executablePath: await chromium.executablePath(),
-  headless: chromium.headless,
-});
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
 
   const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720, deviceScaleFactor: 2 });

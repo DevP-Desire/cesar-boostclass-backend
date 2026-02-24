@@ -1626,15 +1626,90 @@ app.post("/api/sendWelcomeMail", async (req, res) => {
   }
 });
 
+// app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
+//   const { email, meeting, transcriptId, reportData } = req.body;
+
+//   const pdfFile = req.file; // contains uploaded PDF
+
+//   if (!email || !pdfFile)
+//     return res.status(400).send("Missing parameters or PDF");
+
+//   try {
+//     const transporter = nodemailer.createTransport({
+//       host: "smtp.office365.com",
+//       port: 587,
+//       secure: false,
+//       auth: {
+//         user: process.env.OUTLOOK_EMAIL,
+//         pass: process.env.OUTLOOK_PASSWORD,
+//       },
+//     });
+
+//     await transporter.sendMail({
+//       from: '"BoostClass" <Info@go-teach.ai>',
+//       to: email,
+//       subject: "Your Assessment Report is Ready",
+//       html: `
+//         <p>Hello,</p>
+//         <p>Your assessment report for meeting <b>${
+//           JSON.parse(meeting).subject || ""
+//         }</b> is ready.</p>
+//         <p>Recording Id: ${transcriptId}</p>
+//         <p>Regards,<br/>BoostClass AI</p>
+//       `,
+//       attachments: [
+//         {
+//           filename: `Assessment_Report_${
+//             JSON.parse(reportData).speakerName || "report"
+//           }.pdf`,
+//           content: pdfFile.buffer,
+//           contentType: "application/pdf",
+//         },
+//       ],
+//     });
+
+//     res.status(200).send("Mail sent");
+//   } catch (err) {
+//     console.error("Mail error:", err);
+//     res.status(500).send("Failed to send mail");
+//   }
+// });
+
 app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
-  const { email, meeting, transcriptId, reportData } = req.body;
+  const { email, meeting, transcript, reportData, organization } = req.body;
 
   const pdfFile = req.file; // contains uploaded PDF
 
   if (!email || !pdfFile)
     return res.status(400).send("Missing parameters or PDF");
 
+  if (!organization)
+    return res.status(400).send("Missing organization");
+
   try {
+    let notification = {
+      enabled: false,
+      subject: "Your Assessment Report is Ready",
+      message: "<p>Hello,</p><p>Your assessment report is ready.</p>",
+      signatureHtml: "",
+    };
+
+    try {
+      const entity = await tableTokens.getEntity("token", organization);
+      notification = {
+        enabled: entity.notificationEnabled === true,
+        subject: entity.notificationSubject || notification.subject,
+        message: entity.notificationMessage || notification.message,
+        signatureHtml: entity.notificationSignatureHtml || "",
+      };
+    } catch {
+      // keep defaults
+    }
+
+    // if (!notification.enabled) {
+    //   return res.status(403).send("Notifications are disabled for this organization");
+    // }
+
     const transporter = nodemailer.createTransport({
       host: "smtp.office365.com",
       port: 587,
@@ -1645,23 +1720,47 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
       },
     });
 
+    const safeMeeting = meeting ? JSON.parse(meeting) : {};
+    const safeReport = reportData ? JSON.parse(reportData) : {};
+    const safeTranscript = transcript ? JSON.parse(transcript) : {};
+    const recordingDate = new Date(safeTranscript?.recording_end || Date.now());
+      const formattedDate = recordingDate.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      const formattedTime = recordingDate.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
+        <h3 style="margin-bottom: 0.2em;">Meeting: ${safeMeeting.subject || "Meeting"}</h3>
+        <div style="margin-bottom: 1em; color: #555;">
+          <strong>Date:</strong> ${formattedDate}<br/>
+          <strong>Time:</strong> ${formattedTime}
+        </div>
+        <div style="margin-bottom: 1em;">
+          ${notification.message}
+        </div>
+        ${
+          notification.signatureHtml
+            ? `<div style="margin-top:2em; border-top:1px solid #eee; padding-top:1em;">${notification.signatureHtml}</div>`
+            : ""
+        }
+      </div>
+    `;
+
     await transporter.sendMail({
       from: '"BoostClass" <Info@go-teach.ai>',
       to: email,
-      subject: "Your Assessment Report is Ready",
-      html: `
-        <p>Hello,</p>
-        <p>Your assessment report for meeting <b>${
-          JSON.parse(meeting).subject || ""
-        }</b> is ready.</p>
-        <p>Recording Id: ${transcriptId}</p>
-        <p>Regards,<br/>BoostClass AI</p>
-      `,
+      subject: notification.subject,
+      html,
       attachments: [
         {
-          filename: `Assessment_Report_${
-            JSON.parse(reportData).speakerName || "report"
-          }.pdf`,
+          filename: `Assessment_Report_${safeReport.speakerName || "report"}.pdf`,
           content: pdfFile.buffer,
           contentType: "application/pdf",
         },
@@ -1674,6 +1773,8 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
     res.status(500).send("Failed to send mail");
   }
 });
+
+
 // app.post("/api/sendAssessmentMail", async (req, res) => {
 //   const { email, meeting, transcript, reportData, organization, orgLogo } = req.body;
 //   // const pdfFile = req.file; // contains uploaded PDF
@@ -1786,10 +1887,10 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
         autoReportEnabled: false,
         // Notification defaults
         notificationEnabled: false,
-        notificationSubject:
-          "Unmapped Students - BoostClass Report Not Generated",
-        notificationMessage: "<p>Unmapped user list:</p>",
+        notificationSubject: "Your Assessment Report is Ready",
+        notificationMessage: "<p>Hello,</p><p>Your assessment report is ready.</p>",
         notificationSignatureHtml: "",
+        notificationCc: "",
         ...defaultSystemPromts,
       },
       "Merge",
@@ -1826,11 +1927,10 @@ app.get("/api/organizations/:org/notifications", async (req, res) => {
 
     res.json({
       enabled: entity.notificationEnabled === true,
-      subject:
-        entity.notificationSubject ||
-        "Unmapped Students - BoostClass Report Not Generated",
-      message: entity.notificationMessage || "<p>Unmapped user list:</p>",
+      subject: entity.notificationSubject || "Your Assessment Report is Ready",
+      message: entity.notificationMessage || "<p>Hello,</p><p>Your assessment report is ready.</p>",
       signatureHtml: entity.notificationSignatureHtml || "",
+      cc: entity.notificationCc || "",
     });
   } catch (err) {
     if (err.statusCode === 404) {
@@ -1848,7 +1948,6 @@ app.put(
     if (!org) return res.status(400).send("Missing organization name");
 
     try {
-      const enabled = req.body.enabled === "true";
       const subject = req.body.subject || "";
       const message = req.body.message || "";
 
@@ -1862,7 +1961,6 @@ app.put(
       const updateEntity = {
         partitionKey: "token",
         rowKey: org,
-        notificationEnabled: enabled,
         notificationSubject: subject,
         notificationMessage: message,
       };
@@ -1876,6 +1974,25 @@ app.put(
     }
   },
 );
+
+app.put("/api/organizations/:org/notifications/cc", async (req, res) => {
+  const org = req.params.org;
+  const cc = req.body.cc || "";
+  if (!org) return res.status(400).send("Missing organization name");
+  try {
+    await tableTokens.upsertEntity(
+      {
+        partitionKey: "token",
+        rowKey: org,
+        notificationCc: cc,
+      },
+      "Merge"
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).send("Failed to update CC");
+  }
+});
 
 app.put("/api/organizations/:org/notifications/toggle", async (req, res) => {
   const org = req.params.org;
