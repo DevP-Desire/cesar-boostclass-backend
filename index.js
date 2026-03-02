@@ -1840,14 +1840,14 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
-        <h3 style="margin-bottom: 0.2em;">Meeting: ${safeMeeting.subject || "Meeting"}</h3>
-        <div style="margin-bottom: 1em; color: #555;">
-          <strong>Date:</strong> ${formattedDate}<br/>
-          <strong>Time:</strong> ${formattedTime}
-        </div>
-        <div style="margin-bottom: 1em;">
-          ${notification.message}
-        </div>
+      <div style="margin-bottom: 1em;">
+      ${notification.message}
+      </div>
+      <div><strong>Meeting Name:</strong> ${safeMeeting.subject || "Meeting"}</div>
+      <div style="margin-bottom: 1em;">
+        <strong>Date:</strong> ${formattedDate}<br/>
+        <strong>Time:</strong> ${formattedTime}
+      </div>
         ${
           notification.signatureHtml
             ? `<div style="margin-top:2em; border-top:1px solid #eee; padding-top:1em;">${notification.signatureHtml}</div>`
