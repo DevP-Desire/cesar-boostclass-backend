@@ -40,6 +40,11 @@ const queueClient = new QueueClient(
   process.env.AZURE_QUEUE_NAME,
 );
 
+const aiAnalysisQueueClient = new QueueClient(
+  process.env.AZURE_BLOB_CONNECTION_STRING,
+  process.env.AI_ANALYSIS_QUEUE_NAME,
+);
+
 const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET;
 
 const upload = multer();
@@ -164,7 +169,8 @@ app.post("/api/getZoomRecording", async (req, res) => {
             organization,
             download_token: body.download_token || "",
             meetingName: meeting.topic || "",
-            meetingTime: meeting.start_time || file.recording_start || Date.now(),
+            meetingTime:
+              meeting.start_time || file.recording_start || Date.now(),
             meetingDuration: meeting.duration || 0,
             // receivedAt: Date.now(),
           };
@@ -1327,6 +1333,104 @@ app.post("/api/zoom/usertranscript", async (req, res) => {
   }
 });
 
+app.post("/api/generateAiAnalysis/enqueue", async (req, res) => {
+  const {
+    meetingId,
+    meetingName,
+    meetingDuration,
+    transcriptId,
+    transcriptEnd,
+    organization,
+    orgLogo,
+    userEmail,
+    userName,
+    text,
+    mode = "generate",
+  } = req.body;
+  if (!meetingId || !transcriptId || !organization || !userEmail) {
+    return res.status(400).send("Missing meeting/transcript/organization/user");
+  }
+
+  try {
+    const job = {
+      type: "generateAiAnalysis",
+      mode,
+      meetingId,
+      meetingName,
+      meetingDuration,
+      transcriptId,
+      transcriptEnd,
+      organization,
+      orgLogo,
+      userEmail,
+      userName,
+      text,
+    };
+
+    const message = Buffer.from(JSON.stringify(job)).toString("base64");
+    await aiAnalysisQueueClient.sendMessage(message);
+
+    res.status(200).json({ success: true, message: "Job enqueued" });
+  } catch (err) {
+    console.error("Error enqueuing job:", err);
+    res.status(500).send("Failed to enqueue job");
+  }
+});
+
+app.post("/api/generateAiAnalysis/enqueue-all", async (req, res) => {
+  const {
+    meetingId,
+    meetingName,
+    meetingDuration,
+    transcriptId,
+    transcriptEnd,
+    organization,
+    orgLogo,
+    users,
+    mode = "generate",
+  } = req.body;
+
+  if (!meetingId || !transcriptId || !organization || !Array.isArray(users)) {
+    return res
+      .status(400)
+      .send("Missing meeting/transcript/organization/users");
+  }
+
+  let enqueued = 0;
+
+  try {
+    for (const user of users) {
+      const job = {
+        type: "generateAiAnalysis",
+        mode, // "generate" | "generateAndSend"
+        meetingId,
+        meetingName,
+        meetingDuration,
+        transcriptId,
+        transcriptEnd,
+        organization,
+        orgLogo,
+        userEmail: user.id,
+        userName: user.name || "Student",
+        text: user.text || "",
+        requestedAt: new Date().toISOString(),
+      };
+
+      const message = Buffer.from(JSON.stringify(job)).toString("base64");
+      await aiAnalysisQueueClient.sendMessage(message);
+      enqueued++;
+    }
+
+    return res.status(200).json({
+      success: true,
+      enqueued,
+    });
+  } catch (err) {
+    console.error("Error in enqueue-all:", err);
+    return res.status(500).send("Failed to enqueue assessments");
+  }
+});
+
 app.post("/api/generateAiAnalysis", async (req, res) => {
   const { id, name, text, meetingId, transcriptId, organization } = req.body;
   const cefrLevel = "B2";
@@ -1683,8 +1787,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
   if (!email || !pdfFile)
     return res.status(400).send("Missing parameters or PDF");
 
-  if (!organization)
-    return res.status(400).send("Missing organization");
+  if (!organization) return res.status(400).send("Missing organization");
 
   try {
     let notification = {
@@ -1724,16 +1827,16 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
     const safeReport = reportData ? JSON.parse(reportData) : {};
     const safeTranscript = transcript ? JSON.parse(transcript) : {};
     const recordingDate = new Date(safeTranscript?.recording_end || Date.now());
-      const formattedDate = recordingDate.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      const formattedTime = recordingDate.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
+    const formattedDate = recordingDate.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    const formattedTime = recordingDate.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
@@ -1773,7 +1876,6 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
     res.status(500).send("Failed to send mail");
   }
 });
-
 
 // app.post("/api/sendAssessmentMail", async (req, res) => {
 //   const { email, meeting, transcript, reportData, organization, orgLogo } = req.body;
@@ -1888,7 +1990,8 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
         // Notification defaults
         notificationEnabled: false,
         notificationSubject: "Your Assessment Report is Ready",
-        notificationMessage: "<p>Hello,</p><p>Your assessment report is ready.</p>",
+        notificationMessage:
+          "<p>Hello,</p><p>Your assessment report is ready.</p>",
         notificationSignatureHtml: "",
         notificationCc: "",
         ...defaultSystemPromts,
@@ -1928,7 +2031,9 @@ app.get("/api/organizations/:org/notifications", async (req, res) => {
     res.json({
       enabled: entity.notificationEnabled === true,
       subject: entity.notificationSubject || "Your Assessment Report is Ready",
-      message: entity.notificationMessage || "<p>Hello,</p><p>Your assessment report is ready.</p>",
+      message:
+        entity.notificationMessage ||
+        "<p>Hello,</p><p>Your assessment report is ready.</p>",
       signatureHtml: entity.notificationSignatureHtml || "",
       cc: entity.notificationCc || "",
     });
@@ -1986,7 +2091,7 @@ app.put("/api/organizations/:org/notifications/cc", async (req, res) => {
         rowKey: org,
         notificationCc: cc,
       },
-      "Merge"
+      "Merge",
     );
     res.json({ success: true });
   } catch (err) {
@@ -1997,7 +2102,8 @@ app.put("/api/organizations/:org/notifications/cc", async (req, res) => {
 app.put("/api/organizations/:org/notifications/toggle", async (req, res) => {
   const org = req.params.org;
   const { enabled } = req.body;
-  if (typeof enabled === "undefined") return res.status(400).send("Missing enabled value");
+  if (typeof enabled === "undefined")
+    return res.status(400).send("Missing enabled value");
 
   try {
     await tableTokens.upsertEntity(
@@ -2006,7 +2112,7 @@ app.put("/api/organizations/:org/notifications/toggle", async (req, res) => {
         rowKey: org,
         notificationEnabled: !!enabled,
       },
-      "Merge"
+      "Merge",
     );
     res.json({ success: true });
   } catch (err) {
