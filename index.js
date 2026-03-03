@@ -2400,6 +2400,65 @@ app.post("/api/generateDashboardSummary", async (req, res) => {
   }
 });
 
+app.post("/api/assessment/set-pending", async (req, res) => {
+  const { meetingId, transcriptId, userEmail, organization } = req.body;
+  if (!meetingId || !transcriptId || !userEmail || !organization) {
+    return res.status(400).send("Missing parameters");
+  }
+  let existingAssessment = null;
+  try {
+    existingAssessment = await getAssessment(meetingId, transcriptId, userEmail);
+  } catch (err) {
+    existingAssessment = null;
+  }
+  try {
+    await upsertAssessment(
+      meetingId,
+      transcriptId,
+      userEmail,
+      existingAssessment.data || {},
+      organization,
+      "pending",
+    );
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("Error setting assessment to pending:", err);
+    res.status(500).send("Failed to set pending status");
+  }
+});
+
+app.post("/api/assessment/set-pending-bulk", async (req, res) => {
+  const { meetingId, transcriptId, userEmails, organization } = req.body;
+  if (!meetingId || !transcriptId || !userEmails || !organization) {
+    return res.status(400).send("Missing parameters");
+  }
+
+  try {
+    await Promise.all(
+      userEmails.map(async (userEmail) => {
+        let existingAssessment = null;
+        try {
+          existingAssessment = await getAssessment(meetingId, transcriptId, userEmail);
+        } catch (err) {
+          existingAssessment = null;
+        }
+        await upsertAssessment(
+          meetingId,
+          transcriptId,
+          userEmail,
+          existingAssessment?.data || {},
+          organization,
+          "pending",
+        );
+      }),
+    );
+    res.status(200).json({ success: true });
+  } catch (err) {
+    console.error("Error setting bulk pending:", err);
+    res.status(500).send("Failed to set bulk pending status");
+  }
+});
+
 server.listen(process.env.PORT, () =>
   console.log(`🚀 Backend listening on ${process.env.PORT}`),
 );
