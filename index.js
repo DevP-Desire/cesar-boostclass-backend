@@ -2047,30 +2047,33 @@ app.get("/api/organizations/:org/notifications", async (req, res) => {
 
 app.put(
   "/api/organizations/:org/notifications",
-  upload.single("signature"),
+  // upload.single("signature"),
   async (req, res) => {
     const org = req.params.org;
     if (!org) return res.status(400).send("Missing organization name");
 
     try {
-      const subject = req.body.subject || "";
-      const message = req.body.message || "";
+      // const subject = req.body.subject || "";
+      // const message = req.body.message || "";
 
-      let signatureHtml = "";
+      // let signatureHtml = "";
 
-      if (req.file) {
-        // store html content directly in table
-        signatureHtml = req.file.buffer.toString("utf-8");
-      }
+      // if (req.file) {
+      //   // store html content directly in table
+      //   signatureHtml = req.file.buffer.toString("utf-8");
+      // }
+
+      const { subject, message, signatureHtml } = req.body;
 
       const updateEntity = {
         partitionKey: "token",
         rowKey: org,
         notificationSubject: subject,
         notificationMessage: message,
+        notificationSignatureHtml: signatureHtml,
       };
 
-      if (signatureHtml) updateEntity.notificationSignatureHtml = signatureHtml;
+      // if (signatureHtml) updateEntity.notificationSignatureHtml = signatureHtml;
 
       await tableTokens.upsertEntity(updateEntity, "Merge");
       res.json({ success: true });
