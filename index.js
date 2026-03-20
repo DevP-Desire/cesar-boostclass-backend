@@ -1795,6 +1795,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
       subject: "Your Assessment Report is Ready",
       message: "<p>Hello,</p><p>Your assessment report is ready.</p>",
       signatureHtml: "",
+      bcc: "",
     };
 
     try {
@@ -1804,6 +1805,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
         subject: entity.notificationSubject || notification.subject,
         message: entity.notificationMessage || notification.message,
         signatureHtml: entity.notificationSignatureHtml || "",
+        bcc: entity.notificationBcc || "",
       };
     } catch {
       // keep defaults
@@ -1859,6 +1861,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
     await transporter.sendMail({
       from: '"BoostClass" <Info@go-teach.ai>',
       to: email,
+      bcc: notification.bcc || undefined,
       subject: notification.subject,
       html,
       attachments: [
@@ -1994,6 +1997,7 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
           "<p>Hello,</p><p>Your assessment report is ready.</p>",
         notificationSignatureHtml: "",
         notificationCc: "",
+        notificationBcc: "",
         ...defaultSystemPromts,
       },
       "Merge",
@@ -2036,6 +2040,7 @@ app.get("/api/organizations/:org/notifications", async (req, res) => {
         "<p>Hello,</p><p>Your assessment report is ready.</p>",
       signatureHtml: entity.notificationSignatureHtml || "",
       cc: entity.notificationCc || "",
+      bcc: entity.notificationBcc || "",
     });
   } catch (err) {
     if (err.statusCode === 404) {
@@ -2063,7 +2068,7 @@ app.put(
       //   signatureHtml = req.file.buffer.toString("utf-8");
       // }
 
-      const { subject, message, signatureHtml } = req.body;
+      const { subject, message, signatureHtml, bcc } = req.body;
 
       const updateEntity = {
         partitionKey: "token",
@@ -2071,6 +2076,7 @@ app.put(
         notificationSubject: subject,
         notificationMessage: message,
         notificationSignatureHtml: signatureHtml,
+        notificationBcc: bcc || "",
       };
 
       // if (signatureHtml) updateEntity.notificationSignatureHtml = signatureHtml;
