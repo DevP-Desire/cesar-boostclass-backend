@@ -255,6 +255,134 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes cache
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+
+const normalizeClient = (value) => String(value || "").trim();
+
+const normalizeEmailArray = (value) => {
+  let arr = [];
+
+  if (Array.isArray(value)) {
+    arr = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        arr = parsed;
+      } else {
+        arr = [parsed];
+      }
+    } catch {
+      arr = trimmed.split(/[;,]/g);
+    }
+  } else if (value !== undefined && value !== null) {
+    arr = [value];
+  }
+
+  return Array.from(new Set(arr.map(normalizeEmail).filter(Boolean)));
+};
+
+const normalizeClientArray = (value) => {
+  let arr = [];
+
+  if (Array.isArray(value)) {
+    arr = value;
+  } else if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        arr = parsed;
+      } else {
+        arr = [parsed];
+      }
+    } catch {
+      arr = trimmed.split(/[;,]/g);
+    }
+  } else if (value !== undefined && value !== null) {
+    arr = [value];
+  }
+
+  const seen = new Set();
+  const output = [];
+  for (const raw of arr) {
+    const client = normalizeClient(raw);
+    const key = client.toLowerCase();
+    if (!client || seen.has(key)) continue;
+    seen.add(key);
+    output.push(client);
+  }
+
+  return output;
+};
+
+const toEmailArrayStorage = (value) =>
+  JSON.stringify(normalizeEmailArray(value));
+
+const toClientArrayStorage = (value) =>
+  JSON.stringify(normalizeClientArray(value));
+
+const mergeEmailArrays = (currentValue, incomingValue) =>
+  Array.from(
+    new Set([
+      ...normalizeEmailArray(currentValue),
+      ...normalizeEmailArray(incomingValue),
+    ]),
+  );
+
+const getOrganizationClients = async (organization) => {
+  if (!organization) return [];
+  try {
+    const entity = await tableTokens.getEntity("token", organization);
+    return normalizeClientArray(entity.clients);
+  } catch {
+    return [];
+  }
+};
+
+const sanitizeClientsForOrganization = async (clients, organization) => {
+  const normalized = normalizeClientArray(clients);
+  if (!organization) return normalized;
+
+  const allowedClients = await getOrganizationClients(organization);
+  if (!allowedClients.length) return normalized;
+
+  const allowedMap = new Map(
+    allowedClients.map((client) => [client.toLowerCase(), client]),
+  );
+
+  return normalized
+    .map((client) => allowedMap.get(client.toLowerCase()))
+    .filter(Boolean);
+};
+
+const sanitizeAssignedTeachersForOrganization = async (
+  assignedTeachers,
+  organization,
+) => {
+  const normalizedTeachers = normalizeEmailArray(assignedTeachers).slice(0, 1);
+  if (!normalizedTeachers.length || !organization) return normalizedTeachers;
+
+  const safeOrg = String(organization).replace(/'/g, "''");
+  const entities = tableClient.listEntities({
+    queryOptions: { filter: `organization eq '${safeOrg}'` },
+  });
+
+  const teacherEmails = new Set();
+  for await (const entity of entities) {
+    if (String(entity.role || "").toLowerCase() !== "teacher") continue;
+    const email = normalizeEmail(entity.email);
+    if (email) teacherEmails.add(email);
+  }
+
+  return normalizedTeachers.filter((email) => teacherEmails.has(email));
+};
+
 app.post("/api/register", async (req, res) => {
   const {
     name,
@@ -265,6 +393,8 @@ app.post("/api/register", async (req, res) => {
     orgImg,
     zoomUsername,
     teamsUsername,
+    clients,
+    assignedTeachers,
   } = req.body;
   if (!name || !role || !email || !password || !organization)
     return res.status(400).send("Missing fields");
@@ -293,6 +423,18 @@ app.post("/api/register", async (req, res) => {
       }
     }
 
+    const sanitizedClients = await sanitizeClientsForOrganization(
+      clients,
+      organization,
+    );
+    const sanitizedAssignedTeachers =
+      String(role || "").toLowerCase() === "student"
+        ? await sanitizeAssignedTeachersForOrganization(
+            assignedTeachers,
+            organization,
+          )
+        : [];
+
     const userId = uuidv4();
     const hash = await bcrypt.hash(password, 10);
     await tableClient.createEntity({
@@ -306,6 +448,8 @@ app.post("/api/register", async (req, res) => {
       orgImg: resolvedOrgImg,
       zoomUsername: zoomUsername || "",
       teamsUsername: teamsUsername || "",
+      clients: toClientArrayStorage(sanitizedClients),
+      assignedTeachers: toEmailArrayStorage(sanitizedAssignedTeachers),
       orgAdminEnabled: "false",
     });
     res.sendStatus(201);
@@ -331,16 +475,16 @@ app.post("/api/users/bulk-upload", async (req, res) => {
     }
   }
 
-  // Setup mail transporter once for performance
-  const transporter = nodemailer.createTransport({
-    host: "smtp.office365.com",
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.OUTLOOK_EMAIL,
-      pass: process.env.OUTLOOK_PASSWORD,
-    },
-  });
+  // // Setup mail transporter once for performance
+  // const transporter = nodemailer.createTransport({
+  //   host: "smtp.office365.com",
+  //   port: 587,
+  //   secure: false,
+  //   auth: {
+  //     user: process.env.OUTLOOK_EMAIL,
+  //     pass: process.env.OUTLOOK_PASSWORD,
+  //   },
+  // });
 
   const results = [];
   for (const user of users) {
@@ -369,6 +513,11 @@ app.post("/api/users/bulk-upload", async (req, res) => {
         });
         continue;
       }
+      const sanitizedClients = await sanitizeClientsForOrganization(
+        user.clients,
+        organization,
+      );
+
       const userId = uuidv4();
       const hash = await bcrypt.hash(password, 10);
       await tableClient.createEntity({
@@ -382,26 +531,27 @@ app.post("/api/users/bulk-upload", async (req, res) => {
         orgImg: resolvedOrgImg,
         zoomUsername: user.zoomUsername || "",
         teamsUsername: user.teamsUsername || "",
+        clients: toClientArrayStorage(sanitizedClients),
         orgAdminEnabled: "false",
       });
 
-      // Send welcome mail
-      try {
-        await transporter.sendMail({
-          from: '"BoostClass" <Info@go-teach.ai>',
-          to: email,
-          subject: "Welcome to BoostClass AI!",
-          html: `
-            <p>Welcome <b>${name}</b>! Your account has been created.</p>
-            <p><b>Email:</b> ${email}</p>
-            <p><b>Role:</b> ${role}</p>
-            <p>Best regards,<br/>BoostClass AI</p>
-          `,
-        });
-        results.push({ email, success: true });
-      } catch (mailErr) {
-        results.push({ email, success: true, mailError: mailErr.message });
-      }
+      // // Send welcome mail
+      // try {
+      //   await transporter.sendMail({
+      //     from: '"BoostClass" <Info@go-teach.ai>',
+      //     to: email,
+      //     subject: "Welcome to BoostClass AI!",
+      //     html: `
+      //       <p>Welcome <b>${name}</b>! Your account has been created.</p>
+      //       <p><b>Email:</b> ${email}</p>
+      //       <p><b>Role:</b> ${role}</p>
+      //       <p>Best regards,<br/>BoostClass AI</p>
+      //     `,
+      //   });
+      //   results.push({ email, success: true });
+      // } catch (mailErr) {
+      //   results.push({ email, success: true, mailError: mailErr.message });
+      // }
     } catch (err) {
       results.push({ email, success: false, error: err.message });
     }
@@ -504,6 +654,8 @@ app.get("/api/users", async (req, res) => {
         orgAdminEnabled: entity.orgAdminEnabled || "false",
         zoomUsername: entity.zoomUsername || "",
         teamsUsername: entity.teamsUsername || "",
+        clients: normalizeClientArray(entity.clients),
+        assignedTeachers: normalizeEmailArray(entity.assignedTeachers),
       });
     }
     res.json(users);
@@ -530,6 +682,8 @@ app.get("/api/users/:email", async (req, res) => {
           connections: entity.connections,
           zoomUsername: entity.zoomUsername || "",
           teamsUsername: entity.teamsUsername || "",
+          clients: normalizeClientArray(entity.clients),
+          assignedTeachers: normalizeEmailArray(entity.assignedTeachers),
         },
       ]);
     }
@@ -578,8 +732,16 @@ app.delete("/api/users/delete", async (req, res) => {
 
 app.put("/api/users/update", async (req, res) => {
   try {
-    const { email, name, role, password, zoomUsername, teamsUsername } =
-      req.body;
+    const {
+      email,
+      name,
+      role,
+      password,
+      zoomUsername,
+      teamsUsername,
+      clients,
+      assignedTeachers,
+    } = req.body;
 
     if (!email) return res.status(400).send("Missing email");
 
@@ -662,6 +824,28 @@ app.put("/api/users/update", async (req, res) => {
     if (role) updateEntity.role = role;
     if (zoomUsername !== undefined) updateEntity.zoomUsername = zoomUsername;
     if (teamsUsername !== undefined) updateEntity.teamsUsername = teamsUsername;
+    if (clients !== undefined) {
+      const sanitizedClients = await sanitizeClientsForOrganization(
+        clients,
+        user.organization,
+      );
+      updateEntity.clients = toClientArrayStorage(sanitizedClients);
+    }
+
+    const nextRole = String(role || user.role || "").toLowerCase();
+    if (nextRole !== "student") {
+      updateEntity.assignedTeachers = toEmailArrayStorage([]);
+    } else if (assignedTeachers !== undefined) {
+      const sanitizedAssignedTeachers =
+        await sanitizeAssignedTeachersForOrganization(
+          assignedTeachers,
+          user.organization,
+        );
+      updateEntity.assignedTeachers = toEmailArrayStorage(
+        sanitizedAssignedTeachers,
+      );
+    }
+
     if (password) {
       // hash new password before storing
       const hash = await bcrypt.hash(password, 10);
@@ -690,6 +874,81 @@ app.put("/api/users/update", async (req, res) => {
     }
 
     res.status(500).send("Failed to update user");
+  }
+});
+
+app.post("/api/users/assign-teachers", async (req, res) => {
+  const { organization, assignments } = req.body;
+
+  if (!organization) {
+    return res.status(400).send("Missing organization");
+  }
+
+  if (!Array.isArray(assignments) || assignments.length === 0) {
+    return res.status(400).send("Missing assignments");
+  }
+
+  const normalizedAssignments = assignments
+    .map((pair) => ({
+      studentEmail: normalizeEmail(pair?.studentEmail),
+      teacherEmail: normalizeEmail(pair?.teacherEmail),
+    }))
+    .filter((pair) => pair.studentEmail && pair.teacherEmail);
+
+  if (!normalizedAssignments.length) {
+    return res.status(400).send("Invalid assignments");
+  }
+
+  try {
+    const safeOrg = String(organization).replace(/'/g, "''");
+    const entities = tableClient.listEntities({
+      queryOptions: { filter: `organization eq '${safeOrg}'` },
+    });
+
+    const usersByEmail = new Map();
+    for await (const entity of entities) {
+      const email = normalizeEmail(entity.email);
+      if (email) usersByEmail.set(email, entity);
+    }
+
+    let updatedCount = 0;
+
+    for (const { studentEmail, teacherEmail } of normalizedAssignments) {
+      const studentEntity = usersByEmail.get(studentEmail);
+      const teacherEntity = usersByEmail.get(teacherEmail);
+
+      if (!studentEntity || !teacherEntity) continue;
+
+      if (String(studentEntity.role || "").toLowerCase() !== "student") {
+        continue;
+      }
+
+      if (String(teacherEntity.role || "").toLowerCase() !== "teacher") {
+        continue;
+      }
+
+      // Enforce one teacher per student by replacing the assignedTeachers list.
+      await tableClient.updateEntity(
+        {
+          partitionKey: studentEntity.partitionKey,
+          rowKey: studentEntity.rowKey,
+          assignedTeachers: JSON.stringify([teacherEmail]),
+        },
+        "Merge",
+        { etag: studentEntity.etag ?? "*" },
+      );
+
+      studentEntity.assignedTeachers = JSON.stringify([teacherEmail]);
+      updatedCount += 1;
+    }
+
+    return res.status(200).json({
+      success: true,
+      updatedCount,
+    });
+  } catch (err) {
+    console.error("Error assigning teachers:", err);
+    return res.status(500).send("Failed to assign teachers");
   }
 });
 
@@ -1345,6 +1604,7 @@ app.post("/api/generateAiAnalysis/enqueue", async (req, res) => {
     userEmail,
     userName,
     text,
+    // teacherEmails,
     mode = "generate",
   } = req.body;
   if (!meetingId || !transcriptId || !organization || !userEmail) {
@@ -1365,6 +1625,7 @@ app.post("/api/generateAiAnalysis/enqueue", async (req, res) => {
       userEmail,
       userName,
       text,
+      // teacherEmails: normalizeEmailArray(teacherEmails),
     };
 
     const message = Buffer.from(JSON.stringify(job)).toString("base64");
@@ -1413,6 +1674,7 @@ app.post("/api/generateAiAnalysis/enqueue-all", async (req, res) => {
         userEmail: user.id,
         userName: user.name || "Student",
         text: user.text || "",
+        // teacherEmails: normalizeEmailArray(user.teacherEmails),
         requestedAt: new Date().toISOString(),
       };
 
@@ -1796,6 +2058,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
       message: "<p>Hello,</p><p>Your assessment report is ready.</p>",
       signatureHtml: "",
       bcc: "",
+      includeAssignedTeacherInBcc: false,
     };
 
     try {
@@ -1806,10 +2069,39 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
         message: entity.notificationMessage || notification.message,
         signatureHtml: entity.notificationSignatureHtml || "",
         bcc: entity.notificationBcc || "",
+        includeAssignedTeacherInBcc:
+          entity.notificationTeacherInBcc === true,
       };
     } catch {
       // keep defaults
     }
+
+    const recipientEmail = normalizeEmail(email);
+    let assignedTeacherBcc = [];
+    if (notification.includeAssignedTeacherInBcc && recipientEmail) {
+      try {
+        const safeRecipient = recipientEmail.replace(/'/g, "''");
+        const entities = tableClient.listEntities({
+          queryOptions: { filter: `email eq '${safeRecipient}'` },
+        });
+
+        for await (const entity of entities) {
+          if (String(entity.role || "").toLowerCase() === "student") {
+            assignedTeacherBcc = normalizeEmailArray(entity.assignedTeachers);
+          }
+          break;
+        }
+      } catch {
+        assignedTeacherBcc = [];
+      }
+    }
+
+    const mergedBcc = Array.from(
+      new Set([
+        ...normalizeEmailArray(notification.bcc),
+        ...assignedTeacherBcc,
+      ]),
+    ).filter((bccEmail) => bccEmail && bccEmail !== recipientEmail);
 
     // if (!notification.enabled) {
     //   return res.status(403).send("Notifications are disabled for this organization");
@@ -1861,7 +2153,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
     await transporter.sendMail({
       from: '"BoostClass" <Info@go-teach.ai>',
       to: email,
-      bcc: notification.bcc || undefined,
+      bcc: mergedBcc.length ? mergedBcc.join(", ") : undefined,
       subject: notification.subject,
       html,
       attachments: [
@@ -1946,6 +2238,7 @@ app.get("/api/organizations", async (req, res) => {
           name: entity.rowKey,
           imageUrl: entity.imageUrl || "",
           report: entity.value || "",
+          clients: normalizeClientArray(entity.clients),
           autoReportEnabled: entity.autoReportEnabled === true, // default false
         });
       }
@@ -1998,6 +2291,8 @@ app.post("/api/organizations", upload.single("image"), async (req, res) => {
         notificationSignatureHtml: "",
         notificationCc: "",
         notificationBcc: "",
+        notificationTeacherInBcc: false,
+        clients: toClientArrayStorage([]),
         ...defaultSystemPromts,
       },
       "Merge",
@@ -2041,6 +2336,7 @@ app.get("/api/organizations/:org/notifications", async (req, res) => {
       signatureHtml: entity.notificationSignatureHtml || "",
       cc: entity.notificationCc || "",
       bcc: entity.notificationBcc || "",
+      teacherInBcc: entity.notificationTeacherInBcc === true,
     });
   } catch (err) {
     if (err.statusCode === 404) {
@@ -2068,7 +2364,7 @@ app.put(
       //   signatureHtml = req.file.buffer.toString("utf-8");
       // }
 
-      const { subject, message, signatureHtml, bcc } = req.body;
+      const { subject, message, signatureHtml, bcc, teacherInBcc } = req.body;
 
       const updateEntity = {
         partitionKey: "token",
@@ -2078,6 +2374,10 @@ app.put(
         notificationSignatureHtml: signatureHtml,
         notificationBcc: bcc || "",
       };
+
+      if (typeof teacherInBcc === "boolean") {
+        updateEntity.notificationTeacherInBcc = teacherInBcc;
+      }
 
       // if (signatureHtml) updateEntity.notificationSignatureHtml = signatureHtml;
 
@@ -2105,6 +2405,44 @@ app.put("/api/organizations/:org/notifications/cc", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).send("Failed to update CC");
+  }
+});
+
+app.get("/api/organizations/:org/clients", async (req, res) => {
+  const org = req.params.org;
+  if (!org) return res.status(400).send("Missing organization name");
+
+  try {
+    const entity = await tableTokens.getEntity("token", org);
+    res.json({ clients: normalizeClientArray(entity.clients) });
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).send("Organization not found");
+    }
+    res.status(500).send("Failed to fetch clients");
+  }
+});
+
+app.put("/api/organizations/:org/clients", async (req, res) => {
+  const org = req.params.org;
+  const clients = req.body.clients || [];
+  if (!org) return res.status(400).send("Missing organization name");
+
+  try {
+    const normalizedClients = normalizeClientArray(clients);
+
+    await tableTokens.upsertEntity(
+      {
+        partitionKey: "token",
+        rowKey: org,
+        clients: toClientArrayStorage(normalizedClients),
+      },
+      "Merge",
+    );
+
+    res.json({ success: true, clients: normalizedClients });
+  } catch (err) {
+    res.status(500).send("Failed to update clients");
   }
 });
 
@@ -2425,7 +2763,7 @@ app.post("/api/assessment/set-pending", async (req, res) => {
       meetingId,
       transcriptId,
       userEmail,
-      existingAssessment.data || {},
+      (existingAssessment && existingAssessment.data) ? existingAssessment.data : {},
       organization,
       "pending",
     );
