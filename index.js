@@ -923,7 +923,10 @@ app.post("/api/users/assign-teachers", async (req, res) => {
         continue;
       }
 
-      if (String(teacherEntity.role || "").toLowerCase() !== "teacher") {
+      // if ((String(teacherEntity.role || "").toLowerCase() !== "teacher") || (String(teacherEntity.role || "").toLowerCase() !== "orgAdmin")) {
+      //   continue;
+      // }
+      if (String(teacherEntity.role || "").toLowerCase() === "admin") {
         continue;
       }
 
