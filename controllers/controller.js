@@ -229,6 +229,7 @@ async function getOrganizationPrompts(org) {
       ANALYZE_TEXT_WITH_OPENAI: entity.ANALYZE_TEXT_WITH_OPENAI || "",
       ANALYZE_CONTENT_OPENAI: entity.ANALYZE_CONTENT_OPENAI || "",
       VOCABULARY_BOOSTER: entity.VOCABULARY_BOOSTER || "",
+      CUSTOM_PROMPT: entity.CUSTOM_PROMPT || "",
       PRONUNCIATION_CHALLENGE: entity.PRONUNCIATION_CHALLENGE || "",
       COACHING_SPACE: entity.COACHING_SPACE || "",
       GENERATE_MCQS: entity.GENERATE_MCQS || "",
@@ -240,6 +241,8 @@ async function getOrganizationPrompts(org) {
         entity.ENABLE_ANALYZE_CONTENT_OPENAI !== false,
       ENABLE_VOCABULARY_BOOSTER:
         entity.ENABLE_VOCABULARY_BOOSTER !== false,
+      ENABLE_CUSTOM_PROMPT:
+        entity.ENABLE_CUSTOM_PROMPT === true, // default false for custom prompt
       ENABLE_PRONUNCIATION_CHALLENGE:
         entity.ENABLE_PRONUNCIATION_CHALLENGE !== false,
       ENABLE_COACHING_SPACE: entity.ENABLE_COACHING_SPACE !== false,
@@ -250,6 +253,7 @@ async function getOrganizationPrompts(org) {
       ENABLE_ANALYZE_TEXT_WITH_OPENAI: true,
       ENABLE_ANALYZE_CONTENT_OPENAI: true,
       ENABLE_VOCABULARY_BOOSTER: true,
+      ENABLE_CUSTOM_PROMPT: false,
       ENABLE_PRONUNCIATION_CHALLENGE: true,
       ENABLE_COACHING_SPACE: true,
       ENABLE_GENERATE_MCQS: true,
@@ -343,13 +347,13 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
       .replace(/[\r\n]/g, "")
       .trim();
 
-    let scores = [0, 0, 0];
+    let scores = [0, 0, 0, 0, 0, 0];
     try {
       // Try parsing the string as JSON
       const parsed = JSON.parse(content);
       if (
         Array.isArray(parsed) &&
-        parsed.length === 3 &&
+        parsed.length === 6 &&
         parsed.every((n) => typeof n === "number")
       ) {
         scores = parsed.map((n) => Math.max(0, Math.min(100, Math.round(n))));
@@ -357,13 +361,16 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
     } catch (err) {
       // Fallback: Try to extract the scores using regex
       const numbersMatch = content.match(
-        /\[?\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]?/
+        /\[?\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]?/
       );
       if (numbersMatch) {
         scores = [
           parseInt(numbersMatch[1]),
           parseInt(numbersMatch[2]),
           parseInt(numbersMatch[3]),
+          parseInt(numbersMatch[4]),
+          parseInt(numbersMatch[5]),
+          parseInt(numbersMatch[6]),
         ];
       }
     }
@@ -376,7 +383,7 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
         error.response.data
       );
     }
-    return [0, 0, 0];
+    return [0, 0, 0, 0, 0, 0];
   }
 }
 
@@ -507,6 +514,36 @@ async function Vocabulary_Booster(text, orgPrompts = {}) {
     }
   } catch (error) {
     console.log(`[Vocabulary_Booster Error] ${error.message}`);
+    return [];
+  }
+}
+
+async function generateCustomPrompt(text, orgPrompts = {}, studentDisplayName) {
+  const prompts = getPrompt(
+    "CUSTOM_PROMPT",
+    {
+      text,
+      studentName: studentDisplayName,
+    },
+    orgPrompts.CUSTOM_PROMPT
+  );
+  try {
+    const response = await client.chat.completions.create({
+      messages: [
+        { role: "system", content: prompts.systemPrompt },
+        { role: "user", content: prompts.userPrompt },
+      ],
+    });
+
+    const content = response.choices[0].message.content.trim();
+
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
+    return content;
+  } catch (error) {
+    console.log(`[CUSTOM_PROMPT Error] ${error.message}`);
     return [];
   }
 }
@@ -883,6 +920,7 @@ export {
   generateCoachingSpace,
   parseCoachingSpaceMarkdown,
   Vocabulary_Booster,
+  generateCustomPrompt,
   generateMCQs,
   getAssessment,
   listAssessmentsForMeeting,

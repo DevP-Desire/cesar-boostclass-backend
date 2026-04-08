@@ -16,6 +16,7 @@ import {
   generateCoachingSpace,
   parseCoachingSpaceMarkdown,
   Vocabulary_Booster,
+  generateCustomPrompt,
   generateMCQs,
   upsertAssessment,
   getAssessment,
@@ -255,7 +256,10 @@ const CACHE_TTL = 1000 * 60 * 5; // 5 minutes cache
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
-const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
+const normalizeEmail = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const normalizeClient = (value) => String(value || "").trim();
 
@@ -1765,7 +1769,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
       );
     } catch (err) {
       console.log("Error in OpenAI scoring:", err);
-      results.openAiScores = [0, 0, 0];
+      results.openAiScores = [0, 0, 0, 0, 0, 0];
     }
   } else {
     results.openAiScores = [];
@@ -1837,6 +1841,20 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
     results.mcqExercises = "";
   }
 
+  if (orgPrompts.ENABLE_CUSTOM_PROMPT) {
+    try {
+      const studentDisplayName = name.trim() || "Student";
+      results.customePromptResult = await generateCustomPrompt(
+        text,
+        orgPrompts,
+        studentDisplayName,
+      );
+    } catch (error) {
+      console.log("Error in custom prompt:", error);
+      results.customePromptResult = "";
+    }
+  }
+
   const speakerAssessment = {
     speakerEmail: id,
     speakerName: name,
@@ -1848,6 +1866,7 @@ app.post("/api/generateAiAnalysis", async (req, res) => {
     pronunciationChallenge: results.pronunciationChallenge,
     coachingSpace: results.coachingSpace,
     Vocabulary_Booster: results.Vocabulary_Booster,
+    customePromptResult: results.customePromptResult,
     // cefrLevel: cefr_levels[selectedValue],
   };
 
@@ -2072,8 +2091,7 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
         message: entity.notificationMessage || notification.message,
         signatureHtml: entity.notificationSignatureHtml || "",
         bcc: entity.notificationBcc || "",
-        includeAssignedTeacherInBcc:
-          entity.notificationTeacherInBcc === true,
+        includeAssignedTeacherInBcc: entity.notificationTeacherInBcc === true,
       };
     } catch {
       // keep defaults
@@ -2550,6 +2568,7 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
       "ANALYZE_TEXT_WITH_OPENAI",
       "ANALYZE_CONTENT_OPENAI",
       "VOCABULARY_BOOSTER",
+      "CUSTOM_PROMPT",
       "PRONUNCIATION_CHALLENGE",
       "COACHING_SPACE",
       "GENERATE_MCQS",
@@ -2558,7 +2577,12 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
     const prompts = {};
     promptKeys.forEach((key) => {
       prompts[key] = entity[key] || "";
-      prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] !== false;
+
+      if(key === "CUSTOM_PROMPT") {
+        prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] === true;
+      } else {
+        prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] !== false;
+      }
     });
 
     res.json(prompts);
@@ -2757,7 +2781,11 @@ app.post("/api/assessment/set-pending", async (req, res) => {
   }
   let existingAssessment = null;
   try {
-    existingAssessment = await getAssessment(meetingId, transcriptId, userEmail);
+    existingAssessment = await getAssessment(
+      meetingId,
+      transcriptId,
+      userEmail,
+    );
   } catch (err) {
     existingAssessment = null;
   }
@@ -2766,7 +2794,9 @@ app.post("/api/assessment/set-pending", async (req, res) => {
       meetingId,
       transcriptId,
       userEmail,
-      (existingAssessment && existingAssessment.data) ? existingAssessment.data : {},
+      existingAssessment && existingAssessment.data
+        ? existingAssessment.data
+        : {},
       organization,
       "pending",
     );
@@ -2788,7 +2818,11 @@ app.post("/api/assessment/set-pending-bulk", async (req, res) => {
       userEmails.map(async (userEmail) => {
         let existingAssessment = null;
         try {
-          existingAssessment = await getAssessment(meetingId, transcriptId, userEmail);
+          existingAssessment = await getAssessment(
+            meetingId,
+            transcriptId,
+            userEmail,
+          );
         } catch (err) {
           existingAssessment = null;
         }

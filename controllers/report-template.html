@@ -1,119 +1,163 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>AI Review Report</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>AI Review Report</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <link rel="stylesheet" href="./styles.css" />
-  <style>
-    /* allow custom height from puppeteer */
-    @page { size: auto; margin: 12mm 10mm; }
-    body { background: #fff; }
-  </style>
-</head>
-<body>
-  <div class="fluentifyContainer" style="padding:0">
-    <div id="reportContainer">
-      <div id="pdf" class="pdfReport">
-        <div class="reportHeader" style="display:flex;align-items:center;justify-content:space-between;">
-          <img id="reportLogo" class="reportLogo" alt="Logo" />
-          <h2 style="font-weight:bold;margin:0">AI Review</h2>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+    <style>
+      /* allow custom height from puppeteer */
+      @page {
+        size: auto;
+        margin: 12mm 10mm;
+      }
+      body {
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fluentifyContainer" style="padding: 0">
+      <div id="reportContainer">
+        <div id="pdf" class="pdfReport">
+          <div
+            class="reportHeader"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+            "
+          >
+            <img id="reportLogo" class="reportLogo" alt="Logo" />
+            <h2 style="font-weight: bold; margin: 0">AI Review</h2>
+          </div>
+
+          <p><strong>Meeting:</strong> <span id="meetingSubject">N/A</span></p>
+          <p><strong>Date & Time:</strong> <span id="meetingDate">N/A</span></p>
+          <p>
+            <strong>Duration:</strong> <span id="meetingDuration">N/A</span>
+          </p>
+          <p><strong>Student:</strong> <span id="speakerName">N/A</span></p>
+          <br />
+
+          <div id="scoresSection"></div>
+
+          <div id="observationsSection"></div>
+
+          <div id="vocabSection"></div>
+
+          <div id="customPromptSection"></div>
+
+          <div id="pronunciationSection"></div>
+
+          <div id="coachingSection"></div>
+
+          <div id="exercisesSection"></div>
         </div>
-
-        <p><strong>Meeting:</strong> <span id="meetingSubject">N/A</span></p>
-        <p><strong>Date & Time:</strong> <span id="meetingDate">N/A</span></p>
-        <p><strong>Duration:</strong> <span id="meetingDuration">N/A</span></p>
-        <p><strong>Student:</strong> <span id="speakerName">N/A</span></p>
-        <br />
-
-        <div id="scoresSection"></div>
-
-        <div id="observationsSection"></div>
-
-        <div id="vocabSection"></div>
-
-        <div id="pronunciationSection"></div>
-
-        <div id="coachingSection"></div>
-
-        <div id="exercisesSection"></div>
       </div>
     </div>
-  </div>
 
-  <script>
-    window.__REPORT_PAYLOAD__ = /*__REPORT_PAYLOAD__*/;
+    <script>
+      window.__REPORT_PAYLOAD__ = /*__REPORT_PAYLOAD__*/;
 
-    const payload = window.__REPORT_PAYLOAD__ || {};
-    const report = payload.reportData || {};
-    const meeting = payload.meeting || {};
-    const transcript = payload.transcript || {};
-    const orgLogo = payload.orgLogo || "";
-    const orgName = payload.organization || "BoostClass";
+      const payload = window.__REPORT_PAYLOAD__ || {};
+      const report = payload.reportData || {};
+      const meeting = payload.meeting || {};
+      const transcript = payload.transcript || {};
+      const orgLogo = payload.orgLogo || "";
+      const orgName = payload.organization || "BoostClass";
 
-    const escapeHtml = (str) =>
-      String(str || "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+      const escapeHtml = (str) =>
+        String(str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
 
-    const formatDate = (dateStr) => {
-      try {
-        const d = new Date(dateStr);
-        return d.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
-      } catch {
-        return "N/A";
+      const formatDate = (dateStr) => {
+        try {
+          const d = new Date(dateStr);
+          return d.toLocaleDateString("en-US", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          });
+        } catch {
+          return "N/A";
+        }
+      };
+
+      const formatDuration = (minutes) => {
+        const rounded = Math.round(Number(minutes || 0));
+        if (rounded < 60) return `${rounded}m`;
+        const hours = Math.floor(rounded / 60);
+        const remaining = rounded % 60;
+        return `${hours}h ${remaining}m`;
+      };
+
+      // Header data
+      document.getElementById("meetingSubject").textContent =
+        meeting.subject || "N/A";
+      document.getElementById("meetingDate").textContent = formatDate(
+        transcript.recording_end || transcript.recordingEnd || "",
+      );
+      document.getElementById("meetingDuration").textContent = formatDuration(
+        meeting.duration || 0,
+      );
+      document.getElementById("speakerName").textContent =
+        report.speakerName || "N/A";
+
+      const logoEl = document.getElementById("reportLogo");
+      if (orgLogo && orgLogo !== "undefined") {
+        logoEl.src = orgLogo;
+        logoEl.style.display = "block";
+      } else {
+        logoEl.src = "";
+        logoEl.style.display = "block";
       }
-    };
 
-    const formatDuration = (minutes) => {
-      const rounded = Math.round(Number(minutes || 0));
-      if (rounded < 60) return `${rounded}m`;
-      const hours = Math.floor(rounded / 60);
-      const remaining = rounded % 60;
-      return `${hours}h ${remaining}m`;
-    };
+      // --------- Scores Section (Donut + breakdown) ----------
+      function getColor(score) {
+        if (score >= 80) return "#1e8e3e";
+        if (score >= 60) return "#d3af2a";
+        return "#a72525";
+      }
 
-    // Header data
-    document.getElementById("meetingSubject").textContent = meeting.subject || "N/A";
-    document.getElementById("meetingDate").textContent = formatDate(transcript.recording_end || transcript.recordingEnd || "");
-    document.getElementById("meetingDuration").textContent = formatDuration(meeting.duration || 0);
-    document.getElementById("speakerName").textContent = report.speakerName || "N/A";
+      function renderDonut(canvasId, score) {
+        const ctx = document.getElementById(canvasId).getContext("2d");
+        const mainColor = getColor(score);
+        new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            datasets: [
+              {
+                data: [score, 100 - score],
+                backgroundColor: [mainColor, "#f3f2f1"],
+                borderColor: [mainColor, "#f3f2f1"],
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            cutout: "80%",
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: { enabled: false },
+            },
+            animation: false,
+          },
+        });
+      }
 
-    const logoEl = document.getElementById("reportLogo");
-    if (orgLogo && orgLogo !== "undefined") {
-      logoEl.src = orgLogo;
-      logoEl.style.display = "block";
-    } else {
-      logoEl.src = "./logo.png";
-      logoEl.style.display = "block";
-    }
-
-    // --------- Scores Section (Donut + breakdown) ----------
-    function getColor(score) {
-      if (score >= 80) return "#1e8e3e";
-      if (score >= 60) return "#d3af2a";
-      return "#a72525";
-    }
-
-    function renderDonut(canvasId, score) {
-      const ctx = document.getElementById(canvasId).getContext("2d");
-      const mainColor = getColor(score);
-      new Chart(ctx, {
-        type: "doughnut",
-        data: { datasets: [{ data: [score, 100 - score], backgroundColor: [mainColor, "#f3f2f1"], borderColor: [mainColor, "#f3f2f1"], borderWidth: 1 }] },
-        options: { cutout: "80%", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, animation: false }
-      });
-    }
-
-    function buildScoreCard(title, score, breakdown, canvasId) {
-      return `
+      function buildScoreCard(title, score, breakdown, canvasId) {
+        return `
         <div class="scoreCard">
           <div class="scoreHeader">
-            <h3 class="scoreTitle">${title} score</h3>
+            <h3 class="scoreTitle">${title}</h3>
           </div>
           <div class="chartSection">
             <div class="donutContainer" style="position:relative">
@@ -123,7 +167,9 @@
             <div class="breakdownSection">
               <h4 class="breakdownTitle">Score breakdown</h4>
               <div class="breakdownList">
-                ${breakdown.map(item => `
+                ${breakdown
+                  .map(
+                    (item) => `
                   <div class="breakdownItem">
                     <div class="itemHeader">
                       <div class="itemLabel"><span>${item.label}</span></div>
@@ -133,50 +179,73 @@
                       <div class="progressFill" style="width:${item.score}%;background-color:${getColor(item.score)}"></div>
                     </div>
                   </div>
-                `).join("")}
+                `,
+                  )
+                  .join("")}
               </div>
             </div>
           </div>
         </div>
       `;
-    }
+      }
 
-    function renderScores() {
-      const s = report.scores || {};
-      const openAiScores = report.openAiScores || [];
-      const communicationScore = Math.round(((s.emotionalTone||0)+(s.collaborativeLanguage||0)+(s.growthMindset||0))/3);
-      const speakingScore = Math.round(((openAiScores[0]||0)+(openAiScores[1]||0)+(openAiScores[2]||0))/3);
+      function renderScores() {
+        const openAiScores = report.openAiScores || [];
+        const communicationScore = Math.round(
+          ((openAiScores[0] || 0) +
+            (openAiScores[1] || 0) +
+            (openAiScores[2] || 0)) /
+            3,
+        );
+        const speakingScore = Math.round(
+          ((openAiScores[3] || 0) +
+            (openAiScores[4] || 0) +
+            (openAiScores[5] || 0)) /
+            3,
+        );
 
-      if (!(report.scores && openAiScores.length)) return "";
+        if (!(Array.isArray(openAiScores) && openAiScores.length)) return "";
 
-      return `
+        return `
         <h3 class="scoreheader">
           <div class="simpleBanner"><h1>Your Class Score</h1></div>
         </h3>
         <div class="chartsRow" style="margin-bottom:25px">
           <div class="chartColumn">
-            ${buildScoreCard("Communication", communicationScore, [
-              { label: "Emotional Tone", score: s.emotionalTone || 0 },
-              { label: "Collaborative Language", score: s.collaborativeLanguage || 0 },
-              { label: "Growth Mindset", score: s.growthMindset || 0 },
-            ], "communicationChart")}
+            ${buildScoreCard(
+              "Speaking Performance Score",
+              communicationScore,
+              [
+                { label: "Vocabulary score", score: openAiScores[1] || 0 },
+                { label: "Grammar score", score: openAiScores[0] || 0 },
+                { label: "Fluency score", score: openAiScores[2] || 0 },
+              ],
+              "communicationChart",
+            )}
           </div>
           <div class="chartColumn">
-            ${buildScoreCard("Speaking Performance", speakingScore, [
-              { label: "Vocabulary score", score: openAiScores[0] || 0 },
-              { label: "Grammar score", score: openAiScores[1] || 0 },
-              { label: "Fluency score", score: openAiScores[2] || 0 },
-            ], "speakingChart")}
+            ${buildScoreCard(
+              "Fluency Score Breakdown",
+              speakingScore,
+              [
+                { label: "Flow & Coherence", score: openAiScores[3] || 0 },
+                { label: "Pronunciation", score: openAiScores[4] || 0 },
+                { label: "Discourse Structure", score: openAiScores[5] || 0 },
+              ],
+              "speakingChart",
+            )}
           </div>
         </div>
       `;
-    }
+      }
 
-    // --------- Observations ----------
-    function renderObservations() {
-      const obs = Array.isArray(report.openAiObservations) ? report.openAiObservations : [];
-      if (!obs.length) return "";
-      return `
+      // --------- Observations ----------
+      function renderObservations() {
+        const obs = Array.isArray(report.openAiObservations)
+          ? report.openAiObservations
+          : [];
+        if (!obs.length) return "";
+        return `
         <div class="topMistakesSection" style="margin:0;margin-bottom:25px">
           <div class="topMistake">
             <div class="simpleBanner"><h1>Grammar Corrections</h1></div>
@@ -186,24 +255,30 @@
               <tr><th>Mistake</th><th>Correction</th><th>Explanation</th></tr>
             </thead>
             <tbody>
-              ${obs.map(o => `
+              ${obs
+                .map(
+                  (o) => `
                 <tr>
                   <td>${o.mistake || ""}</td>
                   <td>${o.correction || ""}</td>
                   <td>${o.explanation || ""}</td>
                 </tr>
-              `).join("")}
+              `,
+                )
+                .join("")}
             </tbody>
           </table>
         </div>
       `;
-    }
+      }
 
-    // --------- Vocabulary ----------
-    function renderVocabulary() {
-      const vocab = Array.isArray(report.Vocabulary_Booster) ? report.Vocabulary_Booster : [];
-      if (!vocab.length) return "";
-      return `
+      // --------- Vocabulary ----------
+      function renderVocabulary() {
+        const vocab = Array.isArray(report.Vocabulary_Booster)
+          ? report.Vocabulary_Booster
+          : [];
+        if (!vocab.length) return "";
+        return `
         <div class="topMistakesSection" style="margin:0;margin-bottom:25px">
           <div class="topMistake">
             <div class="simpleBanner"><h1>Vocabulary Booster</h1></div>
@@ -213,26 +288,59 @@
               <tr><th>Word</th><th>Occurrences</th><th>Suggestions</th></tr>
             </thead>
             <tbody>
-              ${vocab.map(v => `
+              ${vocab
+                .map(
+                  (v) => `
                 <tr>
                   <td class="vocabWord">${v.word || ""}</td>
                   <td class="vocabOccurrences">${v.occurrences || 0}</td>
-                  <td class="vocabSuggestions">${Array.isArray(v.suggestions) ? v.suggestions.join(", ") : (v.suggestions || "")}</td>
+                  <td class="vocabSuggestions">${Array.isArray(v.suggestions) ? v.suggestions.join(", ") : v.suggestions || ""}</td>
                 </tr>
-              `).join("")}
+              `,
+                )
+                .join("")}
             </tbody>
           </table>
         </div>
       `;
-    }
+      }
 
-    // --------- Pronunciation ----------
-    function renderPronunciation() {
-      const text = report.pronunciationChallenge || "";
-      if (!text) return "";
-      const words = text.split("\n").map(w => w.replace(/["]/g, "").trim()).filter(Boolean);
+      // --------- Custom Prompt / Learning Lab ----------
+      function renderCustomPrompt() {
+        const customPrompt = report.customePromptResult || "";
+        if (!customPrompt) return "";
 
-      return `
+        const renderMarkdown = (md) => {
+          if (typeof marked === "undefined") {
+            return `<pre class="markdownContent">${escapeHtml(md)}</pre>`;
+          }
+          try {
+            return `<div class="markdownContent">${marked.parse(md || "")}</div>`;
+          } catch {
+            return `<pre class="markdownContent">${escapeHtml(md)}</pre>`;
+          }
+        };
+
+        return `
+        <div class="sectionContainer" style="margin:0;margin-bottom:25px">
+          <div class="customPromptSection" style="margin:0">
+            <div class="simpleBanner"><h1>${orgName ? `${orgName} ` : ""}Learning Lab</h1></div>
+            ${renderMarkdown(customPrompt)}
+          </div>
+        </div>
+      `;
+      }
+
+      // --------- Pronunciation ----------
+      function renderPronunciation() {
+        const text = report.pronunciationChallenge || "";
+        if (!text) return "";
+        const words = text
+          .split("\n")
+          .map((w) => w.replace(/["]/g, "").trim())
+          .filter(Boolean);
+
+        return `
         <div class="sectionContainer" style="margin:0;margin-bottom:25px">
           <div class="pronunciationChallengeSection" style="margin:0">
             <div class="simpleBanner"><h1>Pronunciation Challenge</h1></div>
@@ -243,32 +351,39 @@
             </div>
             <div class="challengeWordsContainer">
               <div class="wordsGrid">
-                ${words.map(w => `<div class="challengeWord">${w}</div>`).join("")}
+                ${words.map((w) => `<div class="challengeWord">${w}</div>`).join("")}
               </div>
             </div>
           </div>
         </div>
       `;
-    }
+      }
 
-    // --------- Coaching ----------
-    function renderCoaching() {
-      const coachingRaw = report.coachingSpace || "";
-      if (!coachingRaw) return "";
+      // --------- Coaching ----------
+      function renderCoaching() {
+        const coachingRaw = report.coachingSpace || "";
+        if (!coachingRaw) return "";
 
-      const sections = coachingRaw.split(/(?=^##\s)/gm).filter(s => s.trim().startsWith("##"));
-      const items = sections.map(section => {
-        const titleMatch = section.match(/^##\s*\d️⃣\s*(.*?)\s*–\s*(\d+)/);
-        const analysisMatch = section.match(/\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Coaching Tip:\*\*|$)/);
-        const tipMatch = section.match(/\*\*Coaching Tip:\*\*\s*([\s\S]*)/);
+        const sections = coachingRaw
+          .split(/(?=^##\s)/gm)
+          .filter((s) => s.trim().startsWith("##"));
+        const items = sections
+          .map((section) => {
+            const titleMatch = section.match(/^##\s*\d️⃣\s*(.*?)\s*–\s*(\d+)/);
+            const analysisMatch = section.match(
+              /\*\*Analysis:\*\*\s*([\s\S]*?)(?=\*\*Coaching Tip:\*\*|$)/,
+            );
+            const tipMatch = section.match(/\*\*Coaching Tip:\*\*\s*([\s\S]*)/);
 
-        if (!titleMatch) return "";
-        const title = titleMatch[1].trim();
-        const score = parseInt(titleMatch[2], 10);
-        const analysis = analysisMatch ? analysisMatch[1].trim() : "Not available.";
-        const tip = tipMatch ? tipMatch[1].trim() : "";
+            if (!titleMatch) return "";
+            const title = titleMatch[1].trim();
+            const score = parseInt(titleMatch[2], 10);
+            const analysis = analysisMatch
+              ? analysisMatch[1].trim()
+              : "Not available.";
+            const tip = tipMatch ? tipMatch[1].trim() : "";
 
-        return `
+            return `
           <div class="linearChartItem">
             <div class="chartHeader">
               <span class="chartLabel">${title} - ${score}/100</span>
@@ -282,9 +397,10 @@
             </div>
           </div>
         `;
-      }).join("");
+          })
+          .join("");
 
-      return `
+        return `
         <div class="sectionContainer" style="margin:0;margin-bottom:25px">
           <div class="coachingSpaceSection" style="margin:0">
             <div class="simpleBanner"><h1>Coaching Space Report for Student</h1></div>
@@ -294,42 +410,42 @@
           </div>
         </div>
       `;
-    }
+      }
 
-    // --------- Exercises ----------
-    function renderExercises() {
-      const mcq = report.mcqExercises;
-      if (!mcq) return "";
+      // --------- Exercises ----------
+      function renderExercises() {
+        const mcq = report.mcqExercises;
+        if (!mcq) return "";
 
-      const renderMarkdown = (md) => {
-        if (typeof marked === "undefined") {
-          return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
-        }
-        try {
-          return `<div class="pdfExerciseContent markdownContent">${marked.parse(md || "")}</div>`;
-        } catch {
-          return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
-        }
-      };
+        const renderMarkdown = (md) => {
+          if (typeof marked === "undefined") {
+            return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
+          }
+          try {
+            return `<div class="pdfExerciseContent markdownContent">${marked.parse(md || "")}</div>`;
+          } catch {
+            return `<pre class="pdfExerciseContent markdownContent">${escapeHtml(md)}</pre>`;
+          }
+        };
 
-      // Normalize to the same shape GeneratePDF.jsx expects
-      const list = Array.isArray(mcq)
-        ? mcq
-        : [{ title: "Practice Exercises", markdown: mcq }];
+        // Normalize to the same shape GeneratePDF.jsx expects
+        const list = Array.isArray(mcq)
+          ? mcq
+          : [{ title: "Practice Exercises", markdown: mcq }];
 
-      const exercises = list.map((exercise, index) => {
-        const parts = (exercise.markdown || "").split("## CORRECTIONS");
-        const exercisesPart = parts[0];
-        const correctionsPart =
-          parts.length > 1
-            ? `## CORRECTIONS${parts[1]}`
-            : "### No corrections available";
+        const exercises = list.map((exercise, index) => {
+          const parts = (exercise.markdown || "").split("## CORRECTIONS");
+          const exercisesPart = parts[0];
+          const correctionsPart =
+            parts.length > 1
+              ? `## CORRECTIONS${parts[1]}`
+              : "### No corrections available";
 
-        const displayTitle = exercise.title || `Exercise ${index + 1}`;
-        return { exercisesPart, correctionsPart, displayTitle };
-      });
+          const displayTitle = exercise.title || `Exercise ${index + 1}`;
+          return { exercisesPart, correctionsPart, displayTitle };
+        });
 
-      return `
+        return `
         <div class="sectionContainer" style="margin:0;margin-bottom:5px">
           <div class="mcqSection" style="margin:0">
             <h3 class="mcqTitle" style="margin:0">
@@ -366,56 +482,69 @@
             .join("")}
         </div>
       `;
-    }
-
-    function renderAll() {
-      try {
-        const scoresHtml = renderScores();
-        const obsHtml = renderObservations();
-        const vocabHtml = renderVocabulary();
-        const pronHtml = renderPronunciation();
-        const coachHtml = renderCoaching();
-        const exHtml = renderExercises();
-
-        if (scoresHtml) document.getElementById("scoresSection").innerHTML = scoresHtml;
-        if (obsHtml) document.getElementById("observationsSection").innerHTML = obsHtml;
-        if (vocabHtml) document.getElementById("vocabSection").innerHTML = vocabHtml;
-        if (pronHtml) document.getElementById("pronunciationSection").innerHTML = pronHtml;
-        if (coachHtml) document.getElementById("coachingSection").innerHTML = coachHtml;
-        if (exHtml) document.getElementById("exercisesSection").innerHTML = exHtml;
-      } catch (e) {
-        console.error("Render error:", e);
-      } finally {
-        setTimeout(() => {
-          try {
-            if (window.Chart) {
-              if (document.getElementById("communicationChart"))
-                renderDonut(
-                  "communicationChart",
-                  Math.round(
-                    ((report.scores?.emotionalTone || 0) +
-                      (report.scores?.collaborativeLanguage || 0) +
-                      (report.scores?.growthMindset || 0)) / 3,
-                  ),
-                );
-              if (document.getElementById("speakingChart"))
-                renderDonut(
-                  "speakingChart",
-                  Math.round(
-                    ((report.openAiScores?.[0] || 0) +
-                      (report.openAiScores?.[1] || 0) +
-                      (report.openAiScores?.[2] || 0)) / 3,
-                  ),
-                );
-            }
-          } finally {
-            window.__PDF_RENDER_DONE__ = true;
-          }
-        }, 300);
       }
-    }
 
-    document.addEventListener("DOMContentLoaded", renderAll);
-  </script>
-</body>
+      function renderAll() {
+        try {
+          const scoresHtml = renderScores();
+          const obsHtml = renderObservations();
+          const vocabHtml = renderVocabulary();
+          const customPromptHtml = renderCustomPrompt();
+          const pronHtml = renderPronunciation();
+          const coachHtml = renderCoaching();
+          const exHtml = renderExercises();
+
+          if (scoresHtml)
+            document.getElementById("scoresSection").innerHTML = scoresHtml;
+          if (obsHtml)
+            document.getElementById("observationsSection").innerHTML = obsHtml;
+          if (vocabHtml)
+            document.getElementById("vocabSection").innerHTML = vocabHtml;
+          if (customPromptHtml)
+            document.getElementById("customPromptSection").innerHTML =
+              customPromptHtml;
+          if (pronHtml)
+            document.getElementById("pronunciationSection").innerHTML =
+              pronHtml;
+          if (coachHtml)
+            document.getElementById("coachingSection").innerHTML = coachHtml;
+          if (exHtml)
+            document.getElementById("exercisesSection").innerHTML = exHtml;
+        } catch (e) {
+          console.error("Render error:", e);
+        } finally {
+          setTimeout(() => {
+            try {
+              if (window.Chart) {
+                if (document.getElementById("communicationChart"))
+                  renderDonut(
+                    "communicationChart",
+                    Math.round(
+                      ((report.openAiScores?.[0] || 0) +
+                        (report.openAiScores?.[1] || 0) +
+                        (report.openAiScores?.[2] || 0)) /
+                        3,
+                    ),
+                  );
+                if (document.getElementById("speakingChart"))
+                  renderDonut(
+                    "speakingChart",
+                    Math.round(
+                      ((report.openAiScores?.[3] || 0) +
+                        (report.openAiScores?.[4] || 0) +
+                        (report.openAiScores?.[5] || 0)) /
+                        3,
+                    ),
+                  );
+              }
+            } finally {
+              window.__PDF_RENDER_DONE__ = true;
+            }
+          }, 300);
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", renderAll);
+    </script>
+  </body>
 </html>

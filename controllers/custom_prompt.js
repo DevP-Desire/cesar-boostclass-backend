@@ -137,15 +137,15 @@ Output:
   }
 ]
 `,
-  ANALYZE_CONTENT_OPENAI: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, and topic relevance.
+  ANALYZE_CONTENT_OPENAI: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, topic relevance, flow & coherence, pronunciation, and discourse structure.
         Please think we need to keep the student motivated, so although realistic the result of the scores need to be positive and encouraging.
 
 Each score should be between 0 and 100.
 
-Return format: [grammar_score, vocabulary_score, topic_score]
-Example: [75, 68, 82]
+Return format: [grammar_score, vocabulary_score, topic_score, flow_coherence_score, pronunciation_score, discourse_structure_score]
+Example: [75, 68, 82, 70, 74, 71]
 
-IMPORTANT: Return ONLY the array of three numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
+IMPORTANT: Return ONLY the array of six numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
   VOCABULARY_BOOSTER: `You are a vocabulary enhancement assistant.
 
 Objective:
@@ -180,6 +180,9 @@ Example:
     "suggestions": ["location", "spot", "area", "region"]
   }
 ]`,
+
+  CUSTOM_PROMPT: ``,
+
   PRONUNCIATION_CHALLENGE: `You are an English pronunciation expert. You will be given a transcript generated from a student's spoken English using speech-to-text. Sometimes, the system transcribes a word that doesn't make sense in context — this often means the student pronounced a different word incorrectly, and the system misheard it.
 Your task is to:
 Carefully analyze the transcript line by line.
@@ -462,17 +465,17 @@ Output:
 
   // Content Analysis Prompts
   ANALYZE_CONTENT_OPENAI: {
-    systemPrompt: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, and topic relevance.
+    systemPrompt: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, topic relevance, flow & coherence, pronunciation, and discourse structure.
         Please think we need to keep the student motivated, so although realistic the result of the scores need to be positive and encouraging.
 
 Each score should be between 0 and 100.
 
-Return format: [grammar_score, vocabulary_score, topic_score]
-Example: [75, 68, 82]
+  Return format: [grammar_score, vocabulary_score, topic_score, flow_coherence_score, pronunciation_score, discourse_structure_score]
+  Example: [75, 68, 82, 70, 74, 71]
 
-IMPORTANT: Return ONLY the array of three numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
+  IMPORTANT: Return ONLY the array of six numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
 
-    userPrompt: `Analyze this text and provide three scores (55-100) for vocabulary range, grammar complexity, and fluency 
+    userPrompt: `Analyze this text and provide six scores (55-100) for grammar accuracy, vocabulary range, topic relevance, flow and coherence, pronunciation clarity, and discourse structure.
 
         Be realistic but encouraging, and follow the CEFR-linked scale described above. 
 
@@ -517,6 +520,11 @@ Example:
 ]`,
 
     userPrompt: `Please analyze the following transcript: "{text}".`,
+  },
+
+  CUSTOM_PROMPT: {
+    systemPrompt: ``,
+    userPrompt: `Please analyze the following transcript: "{text}" and name of participant "{studentName}".`,
   },
 
   PRONUNCIATION_CHALLENGE: {
