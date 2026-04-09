@@ -1544,14 +1544,22 @@ app.post("/api/zoom/usertranscript", async (req, res) => {
         .split(/\r?\n/)
         .map((l) => l.trim())
         .filter(Boolean);
+
       const entries = [];
 
       for (let i = 0; i < lines.length; i++) {
-        if (!isNaN(lines[i])) {
-          const speakerLine = lines[i + 2];
+        // Detect timestamp line
+        if (lines[i].includes("-->")) {
+          let textLine = lines[i + 1];
 
-          if (speakerLine && speakerLine.includes(":")) {
-            const [speaker, ...textParts] = speakerLine.split(":");
+          // Handle possible multi-line captions
+          while (textLine && !textLine.includes(":") && i + 2 < lines.length) {
+            i++;
+            textLine = lines[i + 1];
+          }
+
+          if (textLine && textLine.includes(":")) {
+            const [speaker, ...textParts] = textLine.split(":");
             const text = textParts.join(":").trim();
 
             entries.push({
@@ -2578,7 +2586,7 @@ app.get("/api/organizations/:org/prompts", async (req, res) => {
     promptKeys.forEach((key) => {
       prompts[key] = entity[key] || "";
 
-      if(key === "CUSTOM_PROMPT") {
+      if (key === "CUSTOM_PROMPT") {
         prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] === true;
       } else {
         prompts[`ENABLE_${key}`] = entity[`ENABLE_${key}`] !== false;
