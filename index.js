@@ -241,6 +241,15 @@ const tableTokens = new TableClient(
   ),
 );
 
+const assessmentClient = new TableClient(
+  `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
+  "AIAnalysis",
+  new AzureNamedKeyCredential(
+    process.env.AZURE_STORAGE_ACCOUNT,
+    process.env.AZURE_STORAGE_KEY
+  )
+);
+
 const blobServiceClient = BlobServiceClient.fromConnectionString(
   process.env.AZURE_BLOB_CONNECTION_STRING,
 );
@@ -1068,21 +1077,29 @@ app.get("/api/recordings", oboToken, async (req, res) => {
     let transcripts;
     if (allMeetings.length > 0) {
       const transcriptPromises = allMeetings.map(async (meeting) => {
-        const res = await fetch(
-          `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meeting.id}/transcripts`,
-          { headers: { Authorization: `Bearer ${req.graphToken}` } },
-        );
+        try {
+          const res = await fetch(
+            `https://graph.microsoft.com/v1.0/me/onlineMeetings/${meeting.id}/transcripts`,
+            { headers: { Authorization: `Bearer ${req.graphToken}` } },
+          );
 
-        const transcriptData = await res.json();
-        const items = transcriptData.value || [];
+          const transcriptData = await res.json();
+          const items = transcriptData.value || [];
 
-        if (items.length === 0) return null;
+          if (items.length === 0) return null;
 
-        return items.map((t) => ({
-          ...t,
-          meetingName: meeting.subject,
-          participants: meeting.participants,
-        }));
+          return items.map((t) => ({
+            ...t,
+            meetingName: meeting.subject,
+            participants: meeting.participants,
+          }));
+        } catch (e) {
+          console.error(
+            `Failed to fetch transcripts for meeting ${meeting.id}:`,
+            e,
+          );
+          return null;
+        }
       });
 
       const results = await Promise.all(transcriptPromises);
@@ -1951,12 +1968,111 @@ app.get("/api/assessments", async (req, res) => {
       transcriptId: e.transcriptId,
       data: e.data,
       status: e.status || "completed", // fallback for old records
+      reportSent: e.reportSent === true,
+      reportSentAt: e.reportSentAt || null,
       updatedAt: e.updatedAt,
     }));
     res.json(simplified);
   } catch (err) {
     console.error(err);
     res.status(500).send("error listing assessments");
+  }
+});
+
+app.post("/api/recordings/status-summary", async (req, res) => {
+  const { organization, recordingRefs, meetingIds } = req.body || {};
+
+  if (!organization) {
+    return res.status(400).send("Missing organization");
+  }
+
+  const normalizedRefs = Array.isArray(recordingRefs)
+    ? recordingRefs
+        .map((ref) => ({
+          meetingId: String(ref?.meetingId || "").trim(),
+          recordingId: String(ref?.recordingId || "").trim(),
+        }))
+        .filter((ref) => ref.meetingId)
+    : [];
+
+  const fallbackMeetingIds = Array.isArray(meetingIds)
+    ? meetingIds
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+        .map((meetingId) => ({ meetingId, recordingId: "" }))
+    : [];
+
+  const refsToProcess =
+    normalizedRefs.length > 0 ? normalizedRefs : fallbackMeetingIds;
+
+  if (refsToProcess.length === 0) {
+    return res.status(400).send("Missing recordingRefs or meetingIds");
+  }
+
+  const uniqueRefs = Array.from(
+    new Map(
+      refsToProcess.map((ref) => [
+        `${ref.meetingId}::${ref.recordingId || ""}`,
+        ref,
+      ]),
+    ).values(),
+  );
+
+  try {
+    const orgUsers = tableClient.listEntities({
+      queryOptions: { filter: `organization eq '${organization}'` },
+    });
+
+    const currentRoleByEmail = new Map();
+    for await (const user of orgUsers) {
+      const email = normalizeEmail(user.email);
+      if (!email) continue;
+      currentRoleByEmail.set(email, String(user.role || "").toLowerCase());
+    }
+
+    const summaryEntries = await Promise.all(
+      uniqueRefs.map(async ({ meetingId, recordingId }) => {
+        const rows = await listAssessmentsForMeeting(meetingId, recordingId);
+
+        const filteredRows = rows.filter((row) => {
+          const email = normalizeEmail(row.userEmail);
+          return currentRoleByEmail.get(email) === "student";
+        });
+
+        const totalRows = filteredRows.length;
+        const completedRows = filteredRows.filter(
+          (row) => (row.status || "completed") === "completed",
+        ).length;
+        const sentRows = filteredRows.filter(
+          (row) => row.reportSent === true,
+        ).length;
+
+        const badge =
+          totalRows === 0
+            ? "pending"
+            : completedRows === totalRows && sentRows === totalRows
+              ? "sent"
+              : "not-sent";
+
+        const summary = {
+          badge,
+          totalRows,
+          completedRows,
+          sentRows,
+          meetingId,
+          recordingId: recordingId || null,
+        };
+
+        return [`${meetingId}::${recordingId || ""}`, summary];
+      }),
+    );
+
+    return res.status(200).json({
+      summaries: Object.fromEntries(summaryEntries),
+    });
+  } catch (err) {
+    console.error("Error building recordings status summary:", err);
+    return res.status(500).send("Failed to build recordings status summary");
   }
 });
 
@@ -2193,6 +2309,21 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
         },
       ],
     });
+
+    const meetingId = safeMeeting.id;
+    const transcriptId = safeTranscript.id;
+
+    if (meetingId && transcriptId && email) {
+      const partitionKey = String(meetingId);
+      const rowKey = `${transcriptId}::${email.toLowerCase()}`;
+      const entity = {
+        partitionKey,
+        rowKey,
+        reportSent: true,
+        reportSentAt: new Date().toISOString(),
+      };
+      await assessmentClient.upsertEntity(entity, "Merge");
+    }
 
     res.status(200).send("Mail sent");
   } catch (err) {

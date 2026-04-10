@@ -632,8 +632,11 @@ export async function upsertAssessment(
   userEmail,
   data,
   organization,
-  status = "completed" // default for backward compatibility
+  status = "completed", // default for backward compatibility
+  options = {},
 ) {
+  const reportSent = options.reportSent === true;
+  const reportSentAt = options.reportSentAt || "";
   const partitionKey = String(meetingId);
   const rowKey = `${transcriptId}::${userEmail}`;
   const entity = {
@@ -645,6 +648,8 @@ export async function upsertAssessment(
     data: JSON.stringify(data),
     organization: organization || "",
     status,
+    reportSent,
+    reportSentAt,
     updatedAt: new Date().toISOString(),
   };
   await assessmentClient.upsertEntity(entity, "Merge");
