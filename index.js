@@ -46,6 +46,11 @@ const aiAnalysisQueueClient = new QueueClient(
   process.env.AI_ANALYSIS_QUEUE_NAME,
 );
 
+const pdfReportQueueClient = new QueueClient(
+  process.env.AZURE_BLOB_CONNECTION_STRING,
+  process.env.PDF_REPORT_QUEUE_NAME,
+);
+
 const ZOOM_WEBHOOK_SECRET = process.env.ZOOM_WEBHOOK_SECRET;
 
 const upload = multer();
@@ -246,8 +251,8 @@ const assessmentClient = new TableClient(
   "AIAnalysis",
   new AzureNamedKeyCredential(
     process.env.AZURE_STORAGE_ACCOUNT,
-    process.env.AZURE_STORAGE_KEY
-  )
+    process.env.AZURE_STORAGE_KEY,
+  ),
 );
 
 const blobServiceClient = BlobServiceClient.fromConnectionString(
@@ -2187,13 +2192,20 @@ app.post("/api/sendWelcomeMail", async (req, res) => {
 //   }
 // });
 
-app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
-  const { email, meeting, transcript, reportData, organization } = req.body;
+app.post("/api/sendAssessmentMail", async (req, res) => {
+  const {
+    email,
+    name,
+    meeting,
+    transcript,
+    reportData,
+    organization,
+    orgLogo,
+  } = req.body;
 
-  const pdfFile = req.file; // contains uploaded PDF
+  // const pdfFile = req.file; // contains uploaded PDF
 
-  if (!email || !pdfFile)
-    return res.status(400).send("Missing parameters or PDF");
+  if (!email) return res.status(400).send("Missing parameters or PDF");
 
   if (!organization) return res.status(400).send("Missing organization");
 
@@ -2221,111 +2233,50 @@ app.post("/api/sendAssessmentMail", upload.single("pdf"), async (req, res) => {
       // keep defaults
     }
 
-    const recipientEmail = normalizeEmail(email);
-    let assignedTeacherBcc = [];
-    if (notification.includeAssignedTeacherInBcc && recipientEmail) {
-      try {
-        const safeRecipient = recipientEmail.replace(/'/g, "''");
-        const entities = tableClient.listEntities({
-          queryOptions: { filter: `email eq '${safeRecipient}'` },
-        });
-
-        for await (const entity of entities) {
-          if (String(entity.role || "").toLowerCase() === "student") {
-            assignedTeacherBcc = normalizeEmailArray(entity.assignedTeachers);
-          }
-          break;
-        }
-      } catch {
-        assignedTeacherBcc = [];
-      }
-    }
-
-    const mergedBcc = Array.from(
-      new Set([
-        ...normalizeEmailArray(notification.bcc),
-        ...assignedTeacherBcc,
-      ]),
-    ).filter((bccEmail) => bccEmail && bccEmail !== recipientEmail);
-
-    // if (!notification.enabled) {
-    //   return res.status(403).send("Notifications are disabled for this organization");
-    // }
-
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.OUTLOOK_EMAIL,
-        pass: process.env.OUTLOOK_PASSWORD,
-      },
-    });
-
-    const safeMeeting = meeting ? JSON.parse(meeting) : {};
-    const safeReport = reportData ? JSON.parse(reportData) : {};
-    const safeTranscript = transcript ? JSON.parse(transcript) : {};
-    const recordingDate = new Date(safeTranscript?.recording_end || Date.now());
-    const formattedDate = recordingDate.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    const formattedTime = recordingDate.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    const html = `
-      <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
-      <div style="margin-bottom: 1em;">
-      ${notification.message}
-      </div>
-      <div><strong>Meeting Name:</strong> ${safeMeeting.subject || "Meeting"}</div>
-      <div style="margin-bottom: 1em;">
-        <strong>Date:</strong> ${formattedDate}<br/>
-        <strong>Time:</strong> ${formattedTime}
-      </div>
-        ${
-          notification.signatureHtml
-            ? `<div style="margin-top:2em; border-top:1px solid #eee; padding-top:1em;">${notification.signatureHtml}</div>`
-            : ""
-        }
-      </div>
-    `;
-
-    await transporter.sendMail({
-      from: '"BoostClass" <Info@go-teach.ai>',
-      to: email,
-      bcc: mergedBcc.length ? mergedBcc.join(", ") : undefined,
-      subject: notification.subject,
-      html,
-      attachments: [
-        {
-          filename: `Assessment_Report_${safeReport.speakerName || "report"}.pdf`,
-          content: pdfFile.buffer,
-          contentType: "application/pdf",
-        },
-      ],
-    });
-
-    const meetingId = safeMeeting.id;
-    const transcriptId = safeTranscript.id;
-
-    if (meetingId && transcriptId && email) {
-      const partitionKey = String(meetingId);
-      const rowKey = `${transcriptId}::${email.toLowerCase()}`;
-      const entity = {
-        partitionKey,
-        rowKey,
-        reportSent: true,
-        reportSentAt: new Date().toISOString(),
+    try {
+      const job = {
+        userEmail: email,
+        userName: name,
+        meetingId: meeting.id,
+        meetingName: meeting.subject || "",
+        meetingDuration: meeting.duration || 0,
+        transcriptId: transcript.id,
+        transcriptEnd: transcript.recording_end || "",
+        organization,
+        orgLogo,
+        notificationSubject: notification.subject,
+        notificationMessage: notification.message,
+        notificationSignatureHtml: notification.signatureHtml,
+        notificationBcc: notification.bcc,
+        notificationTeacherBcc: notification.includeAssignedTeacherInBcc,
+        reportData,
       };
-      await assessmentClient.upsertEntity(entity, "Merge");
-    }
 
-    res.status(200).send("Mail sent");
+      const message = Buffer.from(JSON.stringify(job)).toString("base64");
+      await pdfReportQueueClient.sendMessage(message);
+
+      const meetingId = meeting.id;
+      const transcriptId = transcript.id;
+
+      if (meetingId && transcriptId && email) {
+        const partitionKey = String(meetingId);
+        const rowKey = `${transcriptId}::${email.toLowerCase()}`;
+        const entity = {
+          partitionKey,
+          rowKey,
+          reportSent: true,
+          reportSentAt: new Date().toISOString(),
+        };
+        await assessmentClient.upsertEntity(entity, "Merge");
+      }
+
+      return res.status(200).json({
+        success: true,
+      });
+    } catch (err) {
+      console.error("Error in queue pdf report:", err);
+      return res.status(500).send("Failed to enqueue pdf report sending");
+    }
   } catch (err) {
     console.error("Mail error:", err);
     res.status(500).send("Failed to send mail");
