@@ -506,7 +506,8 @@ app.post("/api/users/bulk-upload", async (req, res) => {
 
   const results = [];
   for (const user of users) {
-    const { name, email, password, role = "student" } = user;
+    const { name, email, role = "student" } = user;
+    let { password } = user;
     if (!name || !email || !password) {
       results.push({
         email,
@@ -514,6 +515,9 @@ app.post("/api/users/bulk-upload", async (req, res) => {
         error: "Missing required fields (name, email, password)",
       });
       continue;
+    }
+    if (password.type !== "string") {
+      password = String(password || "");
     }
     try {
       // Check if user already exists
@@ -570,6 +574,8 @@ app.post("/api/users/bulk-upload", async (req, res) => {
       // } catch (mailErr) {
       //   results.push({ email, success: true, mailError: mailErr.message });
       // }
+
+      results.push({ email, success: true });
     } catch (err) {
       results.push({ email, success: false, error: err.message });
     }
