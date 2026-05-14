@@ -1,5 +1,6 @@
 const { AzureOpenAI } = require("openai");
 const { TableClient, AzureNamedKeyCredential } = require("@azure/data-tables");
+const { QueueClient } = require("@azure/storage-queue");
 const nodemailer = require("nodemailer");
 const { generateReportPdf } = require("./generatePdf");
 
@@ -10,6 +11,11 @@ const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
 const options = { endpoint, apiKey, deployment, apiVersion };
 
 const client = new AzureOpenAI(options);
+
+const pdfQueueClient = new QueueClient(
+  process.env.AzureWebJobsStorage,
+  process.env.AZURE_PDF_QUEUE_NAME,
+);
 
 const assessmentClient = new TableClient(
   `https://${process.env.AZURE_STORAGE_ACCOUNT}.table.core.windows.net`,
@@ -372,17 +378,17 @@ Output:
 
   // Content Analysis Prompts
   ANALYZE_CONTENT_OPENAI: {
-    systemPrompt: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, and topic relevance.
+    systemPrompt: `You are a language assessment expert. Analyze the given speech transcript and provide scores for grammar, vocabulary, topic relevance, flow & coherence, pronunciation, and discourse structure.
         Please think we need to keep the student motivated, so although realistic the result of the scores need to be positive and encouraging.
 
 Each score should be between 0 and 100.
 
-Return format: [grammar_score, vocabulary_score, topic_score]
-Example: [75, 68, 82]
+Return format: [grammar_score, vocabulary_score, topic_score, flow_coherence_score, pronunciation_score, discourse_structure_score]
+Example: [75, 68, 82, 70, 74, 71]
 
-IMPORTANT: Return ONLY the array of three numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
+IMPORTANT: Return ONLY the array of six numbers, no additional text or explanation. The answer should start with [ and end with ] and no extra character or text`,
 
-    userPrompt: `Analyze this text and provide three scores (55-100) for vocabulary range, grammar complexity, and fluency 
+    userPrompt: `Analyze this text and provide six scores (55-100) for grammar accuracy, vocabulary range, topic relevance, flow and coherence, pronunciation clarity, and discourse structure.
 
         Be realistic but encouraging, and follow the CEFR-linked scale described above. 
 
@@ -427,6 +433,11 @@ Example:
 ]`,
 
     userPrompt: `Please analyze the following transcript: "{text}".`,
+  },
+
+  CUSTOM_PROMPT: {
+    systemPrompt: ``,
+    userPrompt: `Please analyze the following transcript: "{text}" and name of participant "{studentName}".`,
   },
 
   PRONUNCIATION_CHALLENGE: {
@@ -614,6 +625,7 @@ async function getOrganizationPrompts(org) {
       ANALYZE_TEXT_WITH_OPENAI: entity.ANALYZE_TEXT_WITH_OPENAI || "",
       ANALYZE_CONTENT_OPENAI: entity.ANALYZE_CONTENT_OPENAI || "",
       VOCABULARY_BOOSTER: entity.VOCABULARY_BOOSTER || "",
+      CUSTOM_PROMPT: entity.CUSTOM_PROMPT || "",
       PRONUNCIATION_CHALLENGE: entity.PRONUNCIATION_CHALLENGE || "",
       COACHING_SPACE: entity.COACHING_SPACE || "",
       GENERATE_MCQS: entity.GENERATE_MCQS || "",
@@ -624,6 +636,7 @@ async function getOrganizationPrompts(org) {
       ENABLE_ANALYZE_CONTENT_OPENAI:
         entity.ENABLE_ANALYZE_CONTENT_OPENAI !== false,
       ENABLE_VOCABULARY_BOOSTER: entity.ENABLE_VOCABULARY_BOOSTER !== false,
+      ENABLE_CUSTOM_PROMPT: entity.ENABLE_CUSTOM_PROMPT === true,
       ENABLE_PRONUNCIATION_CHALLENGE:
         entity.ENABLE_PRONUNCIATION_CHALLENGE !== false,
       ENABLE_COACHING_SPACE: entity.ENABLE_COACHING_SPACE !== false,
@@ -634,10 +647,41 @@ async function getOrganizationPrompts(org) {
       ENABLE_ANALYZE_TEXT_WITH_OPENAI: true,
       ENABLE_ANALYZE_CONTENT_OPENAI: true,
       ENABLE_VOCABULARY_BOOSTER: true,
+      ENABLE_CUSTOM_PROMPT: false,
       ENABLE_PRONUNCIATION_CHALLENGE: true,
       ENABLE_COACHING_SPACE: true,
       ENABLE_GENERATE_MCQS: true,
     };
+  }
+}
+
+async function generateCustomPrompt(text, orgPrompts = {}, studentDisplayName) {
+  const prompts = getPrompt(
+    "CUSTOM_PROMPT",
+    {
+      text,
+      studentName: studentDisplayName,
+    },
+    orgPrompts.CUSTOM_PROMPT,
+  );
+  try {
+    const response = await client.chat.completions.create({
+      messages: [
+        { role: "system", content: prompts.systemPrompt },
+        { role: "user", content: prompts.userPrompt },
+      ],
+    });
+
+    const content = response.choices[0].message.content.trim();
+
+    if (!content) {
+      throw new Error("Empty response from OpenAI");
+    }
+
+    return content;
+  } catch (error) {
+    // console.log(`[CUSTOM_PROMPT Error] ${error.message}`);
+    return [];
   }
 }
 
@@ -727,13 +771,13 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
       .replace(/[\r\n]/g, "")
       .trim();
 
-    let scores = [0, 0, 0];
+    let scores = [0, 0, 0, 0, 0, 0];
     try {
       // Try parsing the string as JSON
       const parsed = JSON.parse(content);
       if (
         Array.isArray(parsed) &&
-        parsed.length === 3 &&
+        parsed.length === 6 &&
         parsed.every((n) => typeof n === "number")
       ) {
         scores = parsed.map((n) => Math.max(0, Math.min(100, Math.round(n))));
@@ -741,13 +785,16 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
     } catch (err) {
       // Fallback: Try to extract the scores using regex
       const numbersMatch = content.match(
-        /\[?\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]?/,
+        /\[?\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]?/,
       );
       if (numbersMatch) {
         scores = [
           parseInt(numbersMatch[1]),
           parseInt(numbersMatch[2]),
           parseInt(numbersMatch[3]),
+          parseInt(numbersMatch[4]),
+          parseInt(numbersMatch[5]),
+          parseInt(numbersMatch[6]),
         ];
       }
     }
@@ -760,7 +807,7 @@ async function analyzeContentOpenAI(text, cefrLevel, orgPrompts = {}) {
     //     error.response.data,
     //   );
     // }
-    return [0, 0, 0];
+    return [0, 0, 0, 0, 0, 0];
   }
 }
 
@@ -969,7 +1016,10 @@ async function upsertAssessment(
   data,
   organization,
   status = "completed", // default for backward compatibility
+  options = {},
 ) {
+  const reportSent = options.reportSent === true;
+  const reportSentAt = options.reportSentAt || "";
   const partitionKey = String(meetingId);
   const rowKey = `${transcriptId}::${userEmail}`;
   const entity = {
@@ -981,25 +1031,61 @@ async function upsertAssessment(
     data: JSON.stringify(data),
     organization: organization || "",
     status,
+    reportSent,
+    reportSentAt,
     updatedAt: new Date().toISOString(),
   };
   await assessmentClient.upsertEntity(entity, "Merge");
   return entity;
 }
 
+// function parseVTTtoJSON(vttText) {
+//   const lines = vttText
+//     .split(/\r?\n/)
+//     .map((l) => l.trim())
+//     .filter(Boolean);
+//   const entries = [];
+
+//   for (let i = 0; i < lines.length; i++) {
+//     if (!isNaN(lines[i])) {
+//       const speakerLine = lines[i + 2];
+
+//       if (speakerLine && speakerLine.includes(":")) {
+//         const [speaker, ...textParts] = speakerLine.split(":");
+//         const text = textParts.join(":").trim();
+
+//         entries.push({
+//           speaker: speaker.trim(),
+//           text,
+//         });
+//       }
+//     }
+//   }
+
+//   return entries;
+// }
+
 function parseVTTtoJSON(vttText) {
   const lines = vttText
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
+
   const entries = [];
 
   for (let i = 0; i < lines.length; i++) {
-    if (!isNaN(lines[i])) {
-      const speakerLine = lines[i + 2];
+    // Detect timestamp line
+    if (lines[i].includes("-->")) {
+      let textLine = lines[i + 1];
 
-      if (speakerLine && speakerLine.includes(":")) {
-        const [speaker, ...textParts] = speakerLine.split(":");
+      // Handle possible multi-line captions
+      while (textLine && !textLine.includes(":") && i + 2 < lines.length) {
+        i++;
+        textLine = lines[i + 1];
+      }
+
+      if (textLine && textLine.includes(":")) {
+        const [speaker, ...textParts] = textLine.split(":");
         const text = textParts.join(":").trim();
 
         entries.push({
@@ -1038,18 +1124,370 @@ function mapTranscriptBySpeakerArray(entries) {
 
 async function getOrgUsers(tableClient, organization) {
   const users = [];
+  const safeOrg = String(organization || "").replace(/'/g, "''");
   const entities = tableClient.listEntities({
-    queryOptions: { filter: `organization eq '${organization}'` },
+    queryOptions: { filter: `organization eq '${safeOrg}'` },
   });
   for await (const entity of entities) {
     users.push({
+      partitionKey: entity.partitionKey,
+      rowKey: entity.rowKey,
       email: entity.email,
       name: entity.name,
+      role: entity.role,
       zoomUsername: (entity.zoomUsername || "").trim().toLowerCase(),
       teamsUsername: (entity.teamsUsername || "").trim().toLowerCase(),
+      assignedTeachers: entity.assignedTeachers,
     });
   }
   return users;
+}
+
+const normalizeEmail = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
+
+const normalizeEmailArray = (value) => {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map(normalizeEmail).filter(Boolean)));
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return Array.from(new Set(parsed.map(normalizeEmail).filter(Boolean)));
+      }
+    } catch {
+      return Array.from(
+        new Set(trimmed.split(/[;,]/g).map(normalizeEmail).filter(Boolean)),
+      );
+    }
+  }
+
+  return [];
+};
+
+function mapTranscriptUsersToOrgUsers(
+  transcriptUsers,
+  availableOrgUsers,
+  usernameField,
+) {
+  const duplicateUsernameSet = (() => {
+    const counts = new Map();
+    (availableOrgUsers || [])
+      .filter((u) => String(u.role || "").toLowerCase() === "student")
+      .forEach((u) => {
+        const uname = (u[usernameField] || "").toString().trim().toLowerCase();
+        if (!uname) return;
+        counts.set(uname, (counts.get(uname) || 0) + 1);
+      });
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([name]) => name),
+    );
+  })();
+
+  const duplicateUsernamesFound = new Set();
+
+  const pickCandidatesByRole = (name, role) => {
+    const key = (name || "").trim().toLowerCase();
+    const roleKey = String(role || "").toLowerCase();
+
+    return availableOrgUsers.filter((u) => {
+      const uname = (u[usernameField] || "").toString().trim().toLowerCase();
+      return (
+        String(u.role || "").toLowerCase() === roleKey &&
+        uname &&
+        key &&
+        uname === key
+      );
+    });
+  };
+
+  const pickCandidatesAnyRole = (name) => {
+    const key = (name || "").trim().toLowerCase();
+
+    return availableOrgUsers.filter((u) => {
+      const uname = (u[usernameField] || "").toString().trim().toLowerCase();
+      return uname && key && uname === key;
+    });
+  };
+
+  const pickCandidatesByRoles = (name, roles) => {
+    for (const role of roles || []) {
+      const candidates = pickCandidatesByRole(name, role);
+      if (candidates.length > 0) {
+        return candidates;
+      }
+    }
+    return [];
+  };
+
+  const primaryTranscriptTeacherEmail = (() => {
+    for (const item of transcriptUsers) {
+      const teacherCandidates = pickCandidatesByRoles(item.name, [
+        "teacher",
+        "orgadmin",
+      ]);
+      if (teacherCandidates.length > 0) {
+        const email = normalizeEmail(teacherCandidates[0]?.email);
+        if (email) return email;
+      }
+    }
+    return null;
+  })();
+
+  const assignmentPairs = [];
+
+  const mappedUsers = transcriptUsers.map((item) => {
+    const normalizedName = (item.name || "").trim().toLowerCase();
+    if (normalizedName && duplicateUsernameSet.has(normalizedName)) {
+      duplicateUsernamesFound.add(normalizedName);
+      return {
+        id: "unknown",
+        name: item.name,
+        displayName: "unknown",
+        text: item.text,
+        role: "",
+        assignedTeachers: [],
+      };
+    }
+
+    const candidates = pickCandidatesByRole(item.name, "student");
+
+    if (!candidates.length) {
+      const nonStudentCandidates = pickCandidatesAnyRole(item.name).filter(
+        (u) => String(u.role || "").toLowerCase() !== "student",
+      );
+
+      if (nonStudentCandidates.length === 1) {
+        const matchedOrgUser = nonStudentCandidates[0];
+        const assignedTeachers = normalizeEmailArray(
+          matchedOrgUser.assignedTeachers,
+        );
+        const normalizedEmail = normalizeEmail(matchedOrgUser.email);
+
+        return {
+          id: normalizedEmail || "unknown",
+          name: item.name,
+          displayName: matchedOrgUser?.name || "unknown",
+          text: item.text,
+          role: matchedOrgUser?.role || "",
+          assignedTeachers,
+        };
+      }
+    }
+
+    if (!candidates.length) {
+      return {
+        id: "unknown",
+        name: item.name,
+        displayName: "unknown",
+        text: item.text,
+        role: "",
+        assignedTeachers: [],
+      };
+    }
+
+    let matchedOrgUser = null;
+
+    if (candidates.length === 1) {
+      matchedOrgUser = candidates[0];
+    } else {
+      const teacherMatchedCandidates = candidates.filter((c) => {
+        const assigned = normalizeEmailArray(c.assignedTeachers);
+        return (
+          primaryTranscriptTeacherEmail &&
+          assigned.includes(primaryTranscriptTeacherEmail)
+        );
+      });
+
+      if (teacherMatchedCandidates.length === 1) {
+        matchedOrgUser = teacherMatchedCandidates[0];
+      } else if (teacherMatchedCandidates.length === 0) {
+        const unassignedCandidates = candidates.filter(
+          (c) => normalizeEmailArray(c.assignedTeachers).length === 0,
+        );
+
+        if (
+          unassignedCandidates.length === 1 &&
+          primaryTranscriptTeacherEmail
+        ) {
+          matchedOrgUser = unassignedCandidates[0];
+        }
+      }
+    }
+
+    if (!matchedOrgUser) {
+      return {
+        id: "unknown",
+        name: item.name,
+        displayName: "unknown",
+        text: item.text,
+        role: "",
+        assignedTeachers: [],
+      };
+    }
+
+    const assignedTeachers = normalizeEmailArray(
+      matchedOrgUser.assignedTeachers,
+    );
+    const normalizedEmail = normalizeEmail(matchedOrgUser.email);
+
+    if (
+      normalizedEmail &&
+      normalizedEmail !== "unknown" &&
+      primaryTranscriptTeacherEmail &&
+      assignedTeachers.length === 0
+    ) {
+      // No teacher assigned yet → assign transcript teacher
+      assignmentPairs.push({
+        studentEmail: normalizedEmail,
+        teacherEmail: primaryTranscriptTeacherEmail,
+      });
+    } else if (
+      normalizedEmail &&
+      normalizedEmail !== "unknown" &&
+      primaryTranscriptTeacherEmail &&
+      assignedTeachers.length > 0 &&
+      !assignedTeachers.includes(primaryTranscriptTeacherEmail)
+    ) {
+      // Already has a DIFFERENT teacher → skip mapping entirely
+      return {
+        id: "unknown",
+        name: item.name,
+        displayName: "unknown",
+        text: item.text,
+        role: "",
+        assignedTeachers: [],
+      };
+    }
+
+    return {
+      id: normalizedEmail || "unknown",
+      name: item.name,
+      displayName: matchedOrgUser?.name || "unknown",
+      name: item.name,
+      text: item.text,
+      role: matchedOrgUser?.role || "",
+      assignedTeachers,
+    };
+  });
+
+  return {
+    mappedUsers,
+    teacherAssignments: Array.from(
+      new Map(
+        assignmentPairs.map((pair) => [
+          `${pair.studentEmail}__${pair.teacherEmail}`,
+          pair,
+        ]),
+      ).values(),
+    ),
+    duplicateUsernames: Array.from(duplicateUsernamesFound),
+  };
+}
+
+async function sendDuplicateUsernamesNotification(
+  organization,
+  adminEmails,
+  usernames,
+  context,
+) {
+  if (!adminEmails.length || !usernames.length) return;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: "smtp.office365.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.OUTLOOK_EMAIL,
+        pass: process.env.OUTLOOK_PASSWORD,
+      },
+    });
+
+    const escapedNames = usernames.map((u) => String(u || "").trim());
+    const listHtml = escapedNames.map((u) => `<li>${u}</li>`).join("");
+
+    await transporter.sendMail({
+      from: '"BoostClass" <Info@go-teach.ai>',
+      to: adminEmails,
+      subject: "Duplicate student username detected",
+      html: `
+        <p>Dear Admin, this is a notification to inform you that a new duplicate has been detected in your BoostClass student database. Please take the necessary action.</p>
+        <p><strong>Organization:</strong> ${organization || ""}</p>
+        <p><strong>Duplicate username(s):</strong></p>
+        <ul>${listHtml}</ul>
+      `,
+    });
+  } catch (err) {
+    context.log("Duplicate username notification failed:", err);
+  }
+}
+
+async function applyTeacherAssignmentsToUsers(
+  assignmentPairs,
+  availableOrgUsers,
+  context,
+) {
+  const normalizedPairs = Array.from(
+    new Map(
+      (assignmentPairs || [])
+        .map((pair) => ({
+          studentEmail: normalizeEmail(pair?.studentEmail),
+          teacherEmail: normalizeEmail(pair?.teacherEmail),
+        }))
+        .filter((pair) => pair.studentEmail && pair.teacherEmail)
+        .map((pair) => [`${pair.studentEmail}__${pair.teacherEmail}`, pair]),
+    ).values(),
+  );
+
+  if (!normalizedPairs.length) return;
+
+  const usersByEmail = new Map(
+    (availableOrgUsers || []).map((u) => [normalizeEmail(u.email), u]),
+  );
+
+  for (const pair of normalizedPairs) {
+    const student = usersByEmail.get(pair.studentEmail);
+    if (!student || !student.partitionKey || !student.rowKey) continue;
+
+    const currentTeachers = normalizeEmailArray(student.assignedTeachers);
+    if (currentTeachers.includes(pair.teacherEmail)) {
+      continue;
+    }
+
+    const nextTeachers = Array.from(
+      new Set([...currentTeachers, pair.teacherEmail]),
+    );
+
+    try {
+      await tableClient.upsertEntity(
+        {
+          partitionKey: student.partitionKey,
+          rowKey: student.rowKey,
+          assignedTeachers: JSON.stringify(nextTeachers),
+        },
+        "Merge",
+      );
+
+      student.assignedTeachers = nextTeachers;
+    } catch (err) {
+      context.log(
+        "Teacher auto-assignment error:",
+        pair.studentEmail,
+        pair.teacherEmail,
+        err,
+      );
+    }
+  }
 }
 
 async function getOrgTokens(tableTokens, organization) {
@@ -1083,6 +1521,20 @@ const deduplicateUsers = (users) => {
   });
   return Array.from(seen.values());
 };
+
+async function getAssessment(meetingId, transcriptId, userEmail) {
+  const partitionKey = String(meetingId);
+  const rowKey = `${transcriptId}::${userEmail}`;
+  try {
+    const entity = await assessmentClient.getEntity(partitionKey, rowKey);
+    // parse JSON stored in data
+    const parsed = entity.data ? JSON.parse(entity.data) : null;
+    return { ...entity, data: parsed };
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+}
 
 async function generateAIAnalysis(payload) {
   const { id, name, text, meetingId, transcriptId, organization } = payload;
@@ -1155,7 +1607,7 @@ async function generateAIAnalysis(payload) {
       );
     } catch (err) {
       //   context.log("Error in OpenAI scoring:", err);
-      results.openAiScores = [0, 0, 0];
+      results.openAiScores = [0, 0, 0, 0, 0, 0];
     }
   } else {
     results.openAiScores = [];
@@ -1227,6 +1679,20 @@ async function generateAIAnalysis(payload) {
     results.mcqExercises = "";
   }
 
+  if (orgPrompts.ENABLE_CUSTOM_PROMPT) {
+    try {
+      const studentDisplayName = name.trim() || "Student";
+      results.customePromptResult = await generateCustomPrompt(
+        text,
+        orgPrompts,
+        studentDisplayName,
+      );
+    } catch (error) {
+      // console.log("Error in custom prompt:", error);
+      results.customePromptResult = "";
+    }
+  }
+
   const speakerAssessment = {
     speakerEmail: id,
     speakerName: name,
@@ -1238,6 +1704,7 @@ async function generateAIAnalysis(payload) {
     pronunciationChallenge: results.pronunciationChallenge,
     coachingSpace: results.coachingSpace,
     Vocabulary_Booster: results.Vocabulary_Booster,
+    customePromptResult: results.customePromptResult,
     // cefrLevel: cefr_levels[selectedValue],
   };
 
@@ -1298,56 +1765,56 @@ async function generateAIAnalysis(payload) {
   return speakerAssessment;
 }
 
-async function sendAssessmentMail(email, meeting, transcript, reportData, organization, orgLogo, context){
-  if (!email || !reportData)
-    return;
+// async function sendAssessmentMail(email, meeting, transcript, reportData, organization, orgLogo, context){
+//   if (!email || !reportData)
+//     return;
 
-  try {
-    context.log("running pdf part")
-    const pdfBuffer = await generateReportPdf({
-      reportData: reportData,
-      meeting: meeting,
-      transcript: transcript,
-      organization,
-      orgLogo,
-    });
+//   try {
+//     context.log("running pdf part")
+//     const pdfBuffer = await generateReportPdf({
+//       reportData: reportData,
+//       meeting: meeting,
+//       transcript: transcript,
+//       organization,
+//       orgLogo,
+//     });
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.office365.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.OUTLOOK_EMAIL,
-        pass: process.env.OUTLOOK_PASSWORD,
-      },
-    });
+//     const transporter = nodemailer.createTransport({
+//       host: "smtp.office365.com",
+//       port: 587,
+//       secure: false,
+//       auth: {
+//         user: process.env.OUTLOOK_EMAIL,
+//         pass: process.env.OUTLOOK_PASSWORD,
+//       },
+//     });
 
-    await transporter.sendMail({
-      from: '"BoostClass" <Info@go-teach.ai>',
-      to: email,
-      subject: "Your Assessment Report is Ready",
-      html: `
-        <p>Hello,</p>
-        <p>Your assessment report for meeting <b>${
-          meeting.subject || ""
-        }</b> is ready.</p>
-        <p>Recording Id: ${transcript.id}</p>
-        <p>Regards,<br/>BoostClass AI</p>
-      `,
-      attachments: [
-        {
-          filename: `Assessment_Report_${
-            reportData.speakerName || "report"
-          }.pdf`,
-          content: pdfBuffer,
-          contentType: "application/pdf",
-        },
-      ],
-    });
-  } catch (err) {
-    context.log("mail err: ", err)
-  }
-}
+//     await transporter.sendMail({
+//       from: '"BoostClass" <Info@go-teach.ai>',
+//       to: email,
+//       subject: "Your Assessment Report is Ready",
+//       html: `
+//         <p>Hello,</p>
+//         <p>Your assessment report for meeting <b>${
+//           meeting.subject || ""
+//         }</b> is ready.</p>
+//         <p>Recording Id: ${transcript.id}</p>
+//         <p>Regards,<br/>BoostClass AI</p>
+//       `,
+//       attachments: [
+//         {
+//           filename: `Assessment_Report_${
+//             reportData.speakerName || "report"
+//           }.pdf`,
+//           content: pdfBuffer,
+//           contentType: "application/pdf",
+//         },
+//       ],
+//     });
+//   } catch (err) {
+//     context.log("mail err: ", err)
+//   }
+// }
 
 module.exports = async function (context, myQueueItem) {
   context.log(
@@ -1387,6 +1854,8 @@ module.exports = async function (context, myQueueItem) {
       return;
     }
 
+    context.log("Transcript downloaded successfully, processing...");
+
     const vttText = await res.text();
 
     const data = parseVTTtoJSON(vttText);
@@ -1411,57 +1880,55 @@ module.exports = async function (context, myQueueItem) {
       notificationSettings.notificationEnabled === true;
     const notificationSubject =
       notificationSettings.notificationSubject ||
-      "Unmapped Students - BoostClass Report Not Generated";
+      "Your Assessment Report is Ready";
     const notificationMessage =
-      notificationSettings.notificationMessage || "<p>Unmapped user list:</p>";
+      notificationSettings.notificationMessage ||
+      "<p>Hello,</p><p>Your Boost Class report is ready.</p><p><br></p>";
     const notificationSignatureHtml =
       notificationSettings.notificationSignatureHtml || "";
+    const notificationCc = notificationSettings.notificationCc || "";
+    const notificationBcc = notificationSettings.notificationBcc || "";
+    const notificationTeacherBcc =
+      notificationSettings.notificationTeacherInBcc === true;
 
     const transcriptUsers = userMappedTranscriptArray.map((item) => ({
       name: item.name,
       text: item.text,
     }));
 
-    // Map transcript users to org users by platform username (zoomUsername / teamsUsername)
+    // Keep platform-specific matching support with a safe default for Zoom jobs.
     const usernameField = "zoomUsername";
 
-    const mappedUsers = transcriptUsers.map((item) => {
-        const itemKey = (item.name || "").trim().toLowerCase();
+    const mappingResult = mapTranscriptUsersToOrgUsers(
+      transcriptUsers,
+      orgUsers,
+      usernameField,
+    );
+    const mappedUsers = mappingResult.mappedUsers;
 
-        let matchedOrgUser = orgUsers.find((u) => {
-          const uname = (u[usernameField] || "")
-            .toString()
-            .trim()
-            .toLowerCase();
-          return uname && itemKey && uname === itemKey;
-        });
+    if (mappingResult.duplicateUsernames?.length) {
+      const adminEmails = (orgUsers || [])
+        .filter(
+          (u) => String(u.role || "").toLowerCase() === "orgadmin",
+        )
+        .map((u) => normalizeEmail(u.email))
+        .filter(Boolean);
 
-        if (!matchedOrgUser) {
-          matchedOrgUser = orgUsers.find(
-            (u) =>
-              u.name &&
-              item.name &&
-              u.name.trim().toLowerCase() === item.name.trim().toLowerCase(),
-          );
-        }
+      await sendDuplicateUsernamesNotification(
+        organization,
+        adminEmails,
+        mappingResult.duplicateUsernames,
+        context,
+      );
+    }
 
-        if (
-          matchedOrgUser &&
-          (matchedOrgUser.role || "").toLowerCase() !== "student"
-        ) {
-          // Not a student, skip mapping
-          return null;
-        }
-
-        return {
-          id:
-            matchedOrgUser?.email?.toLowerCase() ||
-            // matchedParticipant?.id?.toLowerCase() ||
-            "unknown",
-          name: item.name,
-          text: item.text,
-        };
-    }).filter(Boolean);
+    if (mappingResult.teacherAssignments.length) {
+      await applyTeacherAssignmentsToUsers(
+        mappingResult.teacherAssignments,
+        orgUsers,
+        context,
+      );
+    }
 
     // Deduplicate by name, prefer mapped email
     const dedupedUsers = deduplicateUsers(mappedUsers);
@@ -1470,9 +1937,16 @@ module.exports = async function (context, myQueueItem) {
       (user) => !user.id || user.id === "unknown",
     );
 
+    context.log("unmapped users:", unmappedUsers);
+
     const mappedUsersOnly = dedupedUsers.filter(
-      (user) => user.id && user.id !== "unknown",
+      (user) =>
+        user.id &&
+        user.id !== "unknown" &&
+        String(user.role || "").toLowerCase() === "student",
     );
+
+    context.log("mapped users:", mappedUsersOnly);
 
     // Check if enough tokens are available for all mapped users only
     if (orgTokens < mappedUsersOnly.length) {
@@ -1488,42 +1962,72 @@ module.exports = async function (context, myQueueItem) {
         if (!user.id || user.id === "unknown") {
           return;
         }
+        context.log("report generation started for ", user.displayName);
         try {
           const reportData = await generateAIAnalysis({
             id: user.id,
-            name: user.name,
+            name: ((userInfo.displayName || userInfo.name) || "")
+              .trim()
+              .split(" ")[0] || userInfo.name,
             text: user.text,
             meetingId,
             transcriptId,
             organization,
           });
 
-        //   await sendAssessmentMail(
-        //     user.id,
-        //     { subject: meetingName, duration: meetingDuration },
-        //     { id: transcriptId, recording_end: meetingTime },
-        //     reportData,
-        //     organization,
-        //     orgLogo,
-        //     context
-        //   );
+          context.log("report generated for ", user.displayName);
 
-          await fetchFn(`${process.env.BACKEND_URL}/api/sendAssessmentMail`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                reportData: reportData,
-                meeting: { subject: meetingName, duration: meetingDuration },
-                transcript: { id: transcriptId, recording_end: meetingTime },
-                email: user.id,
-                organization,
-                orgLogo,
-            }),
-        });
+          //   await sendAssessmentMail(
+          //     user.id,
+          //     { subject: meetingName, duration: meetingDuration },
+          //     { id: transcriptId, recording_end: meetingTime },
+          //     reportData,
+          //     organization,
+          //     orgLogo,
+          //     context
+          //   );
+
+          //   await fetchFn(`${process.env.BACKEND_URL}/api/sendAssessmentMail`, {
+          //     method: "POST",
+          //     headers: { "Content-Type": "application/json" },
+          //     body: JSON.stringify({
+          //         reportData: reportData,
+          //         meeting: { subject: meetingName, duration: meetingDuration },
+          //         transcript: { id: transcriptId, recording_end: meetingTime },
+          //         email: user.id,
+          //         organization,
+          //         orgLogo,
+          //     }),
+          // });
+
+          try {
+            const jobPDF = {
+              userEmail: user.id,
+              userName: user.displayName || user.name,
+              meetingId,
+              meetingName,
+              meetingDuration,
+              transcriptId,
+              transcriptEnd: meetingTime,
+              organization,
+              orgLogo,
+              notificationSubject,
+              notificationMessage,
+              notificationSignatureHtml,
+              notificationBcc,
+              notificationTeacherBcc,
+              reportData,
+            };
+
+            const msg = Buffer.from(JSON.stringify(jobPDF)).toString("base64");
+            await pdfQueueClient.sendMessage(msg);
+          } catch (err) {
+            context.log("Error queueing PDF generation job:", err);
+          }
         } catch (error) {
           context.log(
             "Error generating AI analysis for user:",
-            user.name,
+            user.displayName || user.name,
             error,
           );
         }
@@ -1559,42 +2063,46 @@ module.exports = async function (context, myQueueItem) {
       });
 
       const unmappedListHtml = `
-  <ul>
-    ${unmappedUsers.map((u) => `<li>${u.name}</li>`).join("")}
-  </ul>
-`;
+        <ul>
+          ${unmappedUsers.map((u) => `<li>${u.name}</li>`).join("")}
+        </ul>
+      `;
 
       const fullHtml = `
-  <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
-    <h3 style="margin-bottom: 0.2em;">Meeting: ${meetingName || "Meeting"}</h3>
-    <div style="margin-bottom: 1em; color: #555;">
-      <strong>Date:</strong> ${formattedDate}<br/>
-      <strong>Time:</strong> ${formattedTime}
-    </div>
-    <div style="margin-bottom: 1em;">
-      ${notificationMessage}
-    </div>
-    <div style="margin-bottom: 1em;">
-      ${unmappedListHtml}
-    </div>
-    ${
-      notificationSignatureHtml
-        ? `<div style="margin-top:2em; border-top:1px solid #eee; padding-top:1em;">${notificationSignatureHtml}</div>`
-        : ""
-    }
-  </div>
-`;
+        <div style="font-family: Arial, sans-serif; color: #222; font-size: 16px;">
+          <div><strong>Meeting Name:</strong> ${meetingName || "Meeting"}</div>
+          <div style="margin-bottom: 1em;">
+            <strong>Date:</strong> ${formattedDate}<br/>
+            <strong>Time:</strong> ${formattedTime}
+          </div>
+          <div style="margin-bottom: 1em;">
+            <p>The following BoostClass report(s) could not be automatically matched with students in the system.</p>
+            <p>Please log in to the portal,assign the correct student, and send the report manually.</p>
+          </div>
+          <div style="margin-bottom: 1em;">
+            ${unmappedListHtml}
+          </div>
+          ${
+            notificationSignatureHtml
+              ? `<div style="margin-top:2em; border-top:1px solid #eee; padding-top:1em;">${notificationSignatureHtml}</div>`
+              : ""
+          }
+        </div>
+      `;
 
       const mailOptions = {
         from: '"BoostClass" <Info@go-teach.ai>',
         to: hostEmail,
-        subject: notificationSubject,
+        cc: notificationCc || undefined,
+        subject: "Unmapped Students - BoostClass Report Not Generated",
         html: fullHtml,
       };
 
       try {
         await transporter.sendMail(mailOptions);
-      } catch (err) {}
+      } catch (err) {
+        context.log("❌ Error sending email:", err);
+      }
     }
 
     context.log("✅ Queue job processed:", transcriptId);

@@ -383,7 +383,7 @@ const sanitizeAssignedTeachersForOrganization = async (
   assignedTeachers,
   organization,
 ) => {
-  const normalizedTeachers = normalizeEmailArray(assignedTeachers).slice(0, 1);
+  const normalizedTeachers = normalizeEmailArray(assignedTeachers);
   if (!normalizedTeachers.length || !organization) return normalizedTeachers;
 
   const safeOrg = String(organization).replace(/'/g, "''");
@@ -393,7 +393,7 @@ const sanitizeAssignedTeachersForOrganization = async (
 
   const teacherEmails = new Set();
   for await (const entity of entities) {
-    if (String(entity.role || "").toLowerCase() !== "teacher") continue;
+    if (String(entity.role || "").toLowerCase() !== "teacher" && String(entity.role || "").toLowerCase() !== "orgadmin") continue;
     const email = normalizeEmail(entity.email);
     if (email) teacherEmails.add(email);
   }
@@ -765,6 +765,7 @@ app.put("/api/users/update", async (req, res) => {
       teamsUsername,
       clients,
       assignedTeachers,
+      allowDuplicateUsernames,
     } = req.body;
 
     if (!email) return res.status(400).send("Missing email");
@@ -829,12 +830,14 @@ app.put("/api/users/update", async (req, res) => {
       }
     };
 
-    // Cleanup duplicates only for the platform fields that are actually being updated
-    if (zoomUsername !== undefined && zoomUsername !== null) {
-      await cleanupIfDuplicate("zoomUsername", zoomUsername);
-    }
-    if (teamsUsername !== undefined && teamsUsername !== null) {
-      await cleanupIfDuplicate("teamsUsername", teamsUsername);
+    if (!allowDuplicateUsernames) {
+      // Cleanup duplicates only for the platform fields that are actually being updated
+      if (zoomUsername !== undefined && zoomUsername !== null) {
+        await cleanupIfDuplicate("zoomUsername", zoomUsername);
+      }
+      if (teamsUsername !== undefined && teamsUsername !== null) {
+        await cleanupIfDuplicate("teamsUsername", teamsUsername);
+      }
     }
 
     // Prepare update object with only fields that are provided
@@ -955,20 +958,35 @@ app.post("/api/users/assign-teachers", async (req, res) => {
       }
 
       // Enforce one teacher per student by replacing the assignedTeachers list.
+      // await tableClient.updateEntity(
+      //   {
+      //     partitionKey: studentEntity.partitionKey,
+      //     rowKey: studentEntity.rowKey,
+      //     assignedTeachers: JSON.stringify([teacherEmail]),
+      //   },
+      const currentTeachers = normalizeEmailArray(
+        studentEntity.assignedTeachers,
+      );
+      if (currentTeachers.includes(teacherEmail)) {
+        continue;
+      }
+
+      const nextTeachers = Array.from(
+        new Set([...currentTeachers, teacherEmail]),
+      );
+
       await tableClient.updateEntity(
         {
           partitionKey: studentEntity.partitionKey,
           rowKey: studentEntity.rowKey,
-          assignedTeachers: JSON.stringify([teacherEmail]),
+          assignedTeachers: JSON.stringify(nextTeachers),
         },
         "Merge",
         { etag: studentEntity.etag ?? "*" },
       );
-
-      studentEntity.assignedTeachers = JSON.stringify([teacherEmail]);
-      updatedCount += 1;
+      studentEntity.assignedTeachers = JSON.stringify(nextTeachers);
+      updatedCount++;
     }
-
     return res.status(200).json({
       success: true,
       updatedCount,
