@@ -1966,9 +1966,9 @@ module.exports = async function (context, myQueueItem) {
         try {
           const reportData = await generateAIAnalysis({
             id: user.id,
-            name: ((userInfo.displayName || userInfo.name) || "")
+            name: ((user.displayName || user.name) || "")
               .trim()
-              .split(" ")[0] || userInfo.name,
+              .split(" ")[0] || user.name,
             text: user.text,
             meetingId,
             transcriptId,
@@ -2003,7 +2003,9 @@ module.exports = async function (context, myQueueItem) {
           try {
             const jobPDF = {
               userEmail: user.id,
-              userName: user.displayName || user.name,
+              userName: ((user.displayName || user.name) || "")
+                .trim()
+                .split(" ")[0] || user.name,
               meetingId,
               meetingName,
               meetingDuration,

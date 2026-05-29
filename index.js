@@ -161,9 +161,9 @@ app.post("/api/getZoomRecording", async (req, res) => {
         const files = meeting.recording_files || [];
         for (const file of files) {
           const isVtt =
-            (file.file_type || "").toLowerCase() === "transcript" ||
-            (file.file_extension || "").toLowerCase() === "vtt" ||
-            (file.recording_type || "").toLowerCase() === "audio_transcript";
+            (file.file_type || "").toLowerCase() === "transcript" &&
+            (file.file_extension || "").toLowerCase() === "vtt";
+            // (file.recording_type || "").toLowerCase() === "audio_transcript";
 
           if (!isVtt || !file.download_url) continue;
 
@@ -1509,9 +1509,9 @@ app.post("/api/zoom/recordingdata", async (req, res) => {
     const downloadPromises = (recording.recording_files || []).map(
       async (file) => {
         const isVtt =
-          file.file_type.toLowerCase() === "transcript" ||
-          file.file_extension.toLowerCase() === "vtt" ||
-          file.recording_type.toLowerCase() === "audio_transcript";
+          file.file_type.toLowerCase() === "transcript" &&
+          file.file_extension.toLowerCase() === "vtt";
+          // file.recording_type.toLowerCase() === "audio_transcript";
 
         // const isTimeline =
         //   file.file_type.toLowerCase() === "timeline" ||
