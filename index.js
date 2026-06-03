@@ -1084,8 +1084,8 @@ app.get("/api/recordings", oboToken, async (req, res) => {
 
     const uniqueMeetings = new Map();
     for (const event of filteredEvents) {
-      if (event.id) {
-        uniqueMeetings.set(event.id, event);
+      if (event.onlineMeeting?.joinUrl) {
+        uniqueMeetings.set(event.onlineMeeting.joinUrl, event);
       }
     }
 
