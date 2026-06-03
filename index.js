@@ -1033,26 +1033,25 @@ app.get("/api/recordings", oboToken, async (req, res) => {
   }
 
   try {
-    const now = new Date();
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(now.getMonth() - 4);
-    const fromDate = oneMonthAgo.toISOString();
-
-    // Use $filter for start/dateTime greater than fromDate
-    let url = `https://graph.microsoft.com/v1.0/me/events?$top=50&$filter=start/dateTime ge '${fromDate}'`;
-
     // const now = new Date();
-    // const startOfMonth = new Date(
-    //   now.getFullYear(),
-    //   now.getMonth() - 2,
-    //   now.getDate()
-    // );
-    // const startDate = startOfMonth.toISOString();
-    // const endDate = now.toISOString();
+    // const oneMonthAgo = new Date();
+    // oneMonthAgo.setMonth(now.getMonth() - 4);
+    // const fromDate = oneMonthAgo.toISOString();
 
-    // let url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startDate}&endDateTime=${endDate}&$top=100`;
+    // // Use $filter for start/dateTime greater than fromDate
+    // let url = `https://graph.microsoft.com/v1.0/me/events?$top=50&$filter=start/dateTime ge '${fromDate}'`;
 
-    // let url = `https://graph.microsoft.com/v1.0/me/events?$top=50`;
+    const now = new Date();
+    const startOfMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() - 1,
+      now.getDate()
+    );
+    const startDate = startOfMonth.toISOString();
+    const endDate = now.toISOString();
+
+    let url = `https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${startDate}&endDateTime=${endDate}&$top=100`;
+
     let events = [];
 
     while (url) {
@@ -1083,7 +1082,14 @@ app.get("/api/recordings", oboToken, async (req, res) => {
       return res.status(404).send("No online meetings found");
     }
 
-    const meetingJoinUrls = filteredEvents?.map(
+    const uniqueMeetings = new Map();
+    for (const event of filteredEvents) {
+      if (event.id) {
+        uniqueMeetings.set(event.id, event);
+      }
+    }
+
+    const meetingJoinUrls = Array.from(uniqueMeetings.values()).map(
       (event) => event.onlineMeeting.joinUrl,
     );
 
